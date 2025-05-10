@@ -9,9 +9,11 @@ import (
 
 func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Username          string `json:"username"`
-		Email             string `json:"email"`
-		PasswordPlaintext string `json:"password"`
+		User struct {
+			Username          string `json:"username"`
+			Email             string `json:"email"`
+			PasswordPlaintext string `json:"password"`
+		} `json:"user"`
 	}
 
 	err := app.readJSON(w, r, &input)
@@ -21,11 +23,11 @@ func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	user := data.User{
-		Username: input.Username,
-		Email:    input.Email,
+		Username: input.User.Username,
+		Email:    input.User.Email,
 	}
 
-	err = user.Password.Set(input.PasswordPlaintext)
+	err = user.Password.Set(input.User.PasswordPlaintext)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return

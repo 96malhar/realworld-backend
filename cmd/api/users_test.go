@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
 )
@@ -16,19 +17,29 @@ type user struct {
 	Bio      string `json:"bio"`
 }
 
+var seedUserRequest = `{
+		"user": {
+			"username": "Alice",
+			"email": "alice@gmail.com",
+			"password": "pa55word1234"
+			}
+		}`
+
 func TestRegisterUserHandler(t *testing.T) {
 	ts := newTestServer(t)
 
 	// Insert a seed user
-	ts.executeRequest(http.MethodPost,
-		"/users", `{"username":"Max", "email":"max@gmail.com", "password":"pa55word1234_max"}`, nil)
+	res, err := ts.executeRequest(http.MethodPost,
+		"/users", seedUserRequest, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, res.StatusCode)
 
 	testCases := []handlerTestcase{
 		{
 			name:                   "Valid request",
 			requestUrlPath:         "/users",
 			requestMethodType:      http.MethodPost,
-			requestBody:            `{"username":"Bob", "email":"bob@gmail.com", "password":"pa55word1234"}`,
+			requestBody:            `{"user":{"username":"Bob", "email":"bob@gmail.com", "password":"pa55word1234"}}`,
 			wantResponseStatusCode: http.StatusCreated,
 			wantResponse: userResponse{
 				User: user{
@@ -40,7 +51,7 @@ func TestRegisterUserHandler(t *testing.T) {
 			},
 		},
 		{
-			name:                   "Invalid request key",
+			name:                   "Invalid request body",
 			requestUrlPath:         "/users",
 			requestMethodType:      http.MethodPost,
 			requestBody:            `{"name":"Alice", "email":"alice@gmail.com", "password":"pa55word1234"}`,
@@ -53,7 +64,7 @@ func TestRegisterUserHandler(t *testing.T) {
 			name:                   "Invalid email",
 			requestUrlPath:         "/users",
 			requestMethodType:      http.MethodPost,
-			requestBody:            `{"username":"Bob", "email":"bobgmail.com", "password":"pa55word1234"}`,
+			requestBody:            `{"user":{"username":"Bob", "email":"bob.gmail.com", "password":"pa55word1234"}}`,
 			wantResponseStatusCode: http.StatusUnprocessableEntity,
 			wantResponse: errorResponse{
 				Errors: []string{"email must be a valid email address"},
@@ -63,7 +74,7 @@ func TestRegisterUserHandler(t *testing.T) {
 			name:                   "Invalid password with empty username",
 			requestUrlPath:         "/users",
 			requestMethodType:      http.MethodPost,
-			requestBody:            `{"username":"", "email":"abc@gmail.com", "password":"123"}`,
+			requestBody:            `{"user":{"username":"", "email":"abc@gmail.com", "password":"123"}}`,
 			wantResponseStatusCode: http.StatusUnprocessableEntity,
 			wantResponse: errorResponse{
 				Errors: []string{"username must be provided", "password must be at least 8 bytes long"},
@@ -73,7 +84,7 @@ func TestRegisterUserHandler(t *testing.T) {
 			name:                   "Duplicate email",
 			requestUrlPath:         "/users",
 			requestMethodType:      http.MethodPost,
-			requestBody:            `{"username":"Bob", "email":"max@gmail.com", "password":"pa55word1234"}`,
+			requestBody:            `{"user":{"username":"Bob", "email":"alice@gmail.com", "password":"pa55word1234"}}`,
 			wantResponseStatusCode: http.StatusUnprocessableEntity,
 			wantResponse: errorResponse{
 				Errors: []string{"a user with this email address already exists"},
@@ -93,10 +104,10 @@ func TestRegisterUserHandler(t *testing.T) {
 			name:                   "Badly formed request body",
 			requestUrlPath:         "/users",
 			requestMethodType:      http.MethodPost,
-			requestBody:            `{"username":"Bob", "email":}`,
+			requestBody:            `{"user": {"username":"Bob", "email"}`,
 			wantResponseStatusCode: http.StatusBadRequest,
 			wantResponse: errorResponse{
-				Errors: []string{"body contains badly-formed JSON (at character 28)"},
+				Errors: []string{"body contains badly-formed JSON (at character 36)"},
 			},
 		},
 	}
