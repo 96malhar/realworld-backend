@@ -29,7 +29,7 @@ func testHandler(t *testing.T, ts *testServer, testcases ...handlerTestcase) {
 
 			res, err := ts.executeRequest(tc.requestMethodType, tc.requestUrlPath, tc.requestBody, tc.requestHeader)
 			require.NoError(t, err)
-			defer res.Body.Close()
+			defer res.Body.Close() //nolint: errcheck
 
 			assert.Equal(t, tc.wantResponseStatusCode, res.StatusCode, "response status codes do not match")
 			assert.Equal(t, res.Header.Get("Content-Type"), "application/json", "response content type is not application/json")

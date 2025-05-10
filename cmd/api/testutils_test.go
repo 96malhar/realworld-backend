@@ -122,8 +122,10 @@ func runMigrations(t *testing.T, pool *pgxpool.Pool, dbName string) {
 	require.NoError(t, err)
 
 	t.Log("database migrations applied")
-	migrator.Close()
-	db.Close()
+	_, err = migrator.Close()
+	require.NoError(t, err)
+
+	require.NoError(t, db.Close())
 }
 
 func readJsonResponse(t *testing.T, body io.Reader, dst any) {
