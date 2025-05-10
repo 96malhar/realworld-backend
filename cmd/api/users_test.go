@@ -43,7 +43,7 @@ func TestRegisterUserHandler(t *testing.T) {
 			name:                   "Invalid request key",
 			requestUrlPath:         "/users",
 			requestMethodType:      http.MethodPost,
-			requestBody:            `{"name":"Alic", "email":"alice@gmail.com", "password":"pa55word1234"}`,
+			requestBody:            `{"name":"Alice", "email":"alice@gmail.com", "password":"pa55word1234"}`,
 			wantResponseStatusCode: http.StatusBadRequest,
 			wantResponse: errorResponse{
 				Errors: []string{"body contains unknown key \"name\""},
@@ -77,6 +77,26 @@ func TestRegisterUserHandler(t *testing.T) {
 			wantResponseStatusCode: http.StatusUnprocessableEntity,
 			wantResponse: errorResponse{
 				Errors: []string{"a user with this email address already exists"},
+			},
+		},
+		{
+			name:                   "Badly formed request body with unclosed JSON",
+			requestUrlPath:         "/users",
+			requestMethodType:      http.MethodPost,
+			requestBody:            `{"username":"Bob", "email":`,
+			wantResponseStatusCode: http.StatusBadRequest,
+			wantResponse: errorResponse{
+				Errors: []string{"body contains badly-formed JSON"},
+			},
+		},
+		{
+			name:                   "Badly formed request body",
+			requestUrlPath:         "/users",
+			requestMethodType:      http.MethodPost,
+			requestBody:            `{"username":"Bob", "email":}`,
+			wantResponseStatusCode: http.StatusBadRequest,
+			wantResponse: errorResponse{
+				Errors: []string{"body contains badly-formed JSON (at character 28)"},
 			},
 		},
 	}
