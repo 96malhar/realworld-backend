@@ -16,6 +16,7 @@ func (app *application) routes() *chi.Mux {
 	r.Get("/healthcheck", app.healthcheckHandler)
 
 	r.Post("/users", app.registerUserHandler)
+	r.Post("/users/login", app.loginUserHandler)
 
 	return r
 }

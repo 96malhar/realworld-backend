@@ -21,5 +21,9 @@ func NewModelStore(db *pgxpool.Pool) ModelStore {
 }
 
 type UserStoreInterface interface {
+	// Insert a new record into the users table.
 	Insert(user *User) error
+
+	// GetByEmail returns a specific record from the users table.
+	GetByEmail(email string) (*User, error)
 }

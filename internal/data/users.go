@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"github.com/96malhar/realworld-backend/internal/validator"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 	"time"
 )
 
 var (
-	ErrDuplicateEmail = errors.New("duplicate email")
+	ErrDuplicateEmail    = errors.New("duplicate email")
+	ErrDuplicateUsername = errors.New("duplicate username")
 )
 
 type User struct {
@@ -20,6 +22,7 @@ type User struct {
 	Password password `json:"-"`
 	Image    string   `json:"image"`
 	Bio      string   `json:"bio"`
+	Version  int      `json:"-"`
 }
 
 type password struct {
@@ -104,9 +107,36 @@ func (s UserStore) Insert(user *User) error {
 		switch {
 		case err.Error() == `ERROR: duplicate key value violates unique constraint "users_email_key" (SQLSTATE 23505)`:
 			return ErrDuplicateEmail
+		case err.Error() == `ERROR: duplicate key value violates unique constraint "users_username_key" (SQLSTATE 23505)`:
+			return ErrDuplicateUsername
 		default:
 			return err
 		}
 	}
 	return nil
+}
+
+// GetByEmail retrieves a user by their email address.
+func (s UserStore) GetByEmail(email string) (*User, error) {
+	query := `
+		SELECT id, username, email, password_hash, image, bio, version
+		FROM users
+		WHERE email = $1`
+
+	var user User
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := s.db.QueryRow(ctx, query, email).Scan(&user.ID, &user.Username, &user.Email, &user.Password.hash, &user.Image, &user.Bio, &user.Version)
+	if err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	return &user, nil
 }
