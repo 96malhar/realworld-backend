@@ -1,0 +1,116 @@
+version: '3'
+
+vars:
+  DB_NAME: conduit
+
+env:
+  DB_DSN: postgres://postgres:postgres@localhost:5432/{{.DB_NAME}}?sslmode=disable
+
+tasks:
+  docker:postgres:start:
+    desc: Start a Postgres server via docker compose
+    cmds:
+      - docker compose up -d db
+
+  docker:postgres:stop:
+    desc: Stops Postgres server via docker compose
+    cmds:
+      - docker compose stop db
+
+  db:setup:
+    desc: Setup the database and the database user used by the greenlight app
+    cmds:
+      - PGPASSWORD=postgres psql -U postgres -h localhost -c "CREATE DATABASE {{.DB_NAME}};"
+
+  db:teardown:
+    desc: Teardown the database and the database user used by the greenlight app
+    cmds:
+      - PGPASSWORD=postgres psql -U postgres -h localhost -c "DROP DATABASE IF EXISTS {{.DB_NAME}};"
+
+  db:migrations:new:
+    desc: Creates a new migration file
+    cmds:
+      - echo "Creating migration files for {{.CLI_ARGS}}..."
+      - migrate create -seq -ext=.sql -dir=./migrations {{.CLI_ARGS}}
+
+  db:migrations:up:
+    desc: Runs up migrations
+    cmds:
+      - echo "Running up migrations..."
+      - migrate -path ./migrations -database ${DB_DSN} up
+
+  db:migrations:down:
+    desc: Runs down migrations
+    cmds:
+      - echo "Running down migrations..."
+      - echo "y" | migrate -path ./migrations -database ${DB_DSN} down
+
+  server:help:
+    desc: Show help for the API server
+    cmds:
+      - go run ./cmd/api -help
+
+  server:build:
+    desc: Build the API server
+    cmds:
+      - go build -ldflags '-s' -o ./bin/api ./cmd/api
+
+  server:start:
+    desc: Builds and starts the API server
+    cmds:
+      - task: server:build
+      - ./bin/api {{.CLI_ARGS}}
+
+  update:dependencies:
+    desc: Update dependencies
+    cmds:
+      - go get -u -t ./...
+      - go mod tidy
+
+  install:dependencies:
+    desc: Install dependencies
+    cmds:
+      - echo "Installing dependencies..."
+      - go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
+      - go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+      - go install gotest.tools/gotestsum@v1.12.1
+      - go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.2
+
+  audit:
+    desc: Run quality control audits
+    cmds:
+      - echo "Tidying and verifying module dependencies..."
+      - go mod tidy
+      - go mod verify
+      - echo "Formatting code..."
+      - go fmt ./...
+      - echo "Vetting code..."
+      - go vet ./...
+      - staticcheck ./...
+      - echo "Checking vulnerabilities..."
+      - govulncheck ./...
+
+  smoketest:
+    desc: Run the smoke test
+    vars:
+      SMOKETEST_DB_NAME: conduit_smoketest
+    env:
+      DB_DSN: postgres://postgres:postgres@localhost:5432/{{.SMOKETEST_DB_NAME}}?sslmode=disable
+    cmds:
+      - defer: PGPASSWORD=postgres psql -U postgres -h localhost -c "DROP DATABASE IF EXISTS {{.SMOKETEST_DB_NAME}};"
+      - defer: echo "Cleaning up the database {{.SMOKETEST_DB_NAME}}"
+      - PGPASSWORD=postgres psql -U postgres -h localhost -c "CREATE DATABASE {{.SMOKETEST_DB_NAME}};"
+      - echo "Running migrations using $DB_DSN"
+      - migrate -path ./migrations -database $DB_DSN up
+      - echo "Running smoke test.."
+      - ./smoke_test.sh
+
+  test:
+    desc: Run all tests
+    cmds:
+      - gotestsum -- -coverprofile=coverage.out -coverpkg=./...  ./...
+
+  visualize:coverage:
+    desc: Visualize the code coverage
+    cmds:
+      - go tool cover -html=coverage.out

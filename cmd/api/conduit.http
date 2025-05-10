@@ -1,0 +1,8 @@
+### Health Check
+GET localhost:4000/healthcheck
+
+### Register User
+POST localhost:4000/users
+Content-Type: application/json
+
+{"username":"Alice", "email":"alice123@gmail.com", "password":"pa55word"}
