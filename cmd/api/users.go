@@ -5,6 +5,7 @@ import (
 	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/96malhar/realworld-backend/internal/validator"
 	"net/http"
+	"time"
 )
 
 func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +105,14 @@ func (app *application) loginUserHandler(w http.ResponseWriter, r *http.Request)
 		app.invalidCredentialsResponse(w, r)
 		return
 	}
+
+	// Generate a new JWT token for the user.
+	token, err := app.jwtMaker.CreateToken(user.ID, 24*time.Hour)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+	user.Token = token
 
 	err = app.writeJSON(w, http.StatusOK, envelope{"user": user}, nil)
 	if err != nil {

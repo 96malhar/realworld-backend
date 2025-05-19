@@ -1,9 +1,12 @@
 package main
 
 import (
+	"github.com/96malhar/realworld-backend/internal/auth"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
+	"time"
 )
 
 type userResponse struct {
@@ -15,6 +18,41 @@ type user struct {
 	Email    string `json:"email"`
 	Image    string `json:"image"`
 	Bio      string `json:"bio"`
+	Token    string `json:"token"`
+}
+
+type dummyJWTMaker struct {
+	TokenToReturn  string
+	ClaimsToReturn *auth.Claims
+	CreateTokenErr error
+	VerifyTokenErr error
+}
+
+func (d *dummyJWTMaker) CreateToken(userID int64, duration time.Duration) (string, error) {
+	if d.CreateTokenErr != nil {
+		return "", d.CreateTokenErr
+	}
+	if d.TokenToReturn != "" {
+		return d.TokenToReturn, nil
+	}
+	return "dummy-token", nil
+}
+
+func (d *dummyJWTMaker) VerifyToken(tokenString string) (*auth.Claims, error) {
+	if d.VerifyTokenErr != nil {
+		return nil, d.VerifyTokenErr
+	}
+	if d.ClaimsToReturn != nil {
+		return d.ClaimsToReturn, nil
+	}
+	return &auth.Claims{
+		UserID: 1,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "test",
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+		},
+	}, nil
 }
 
 var seedUserRequest = `{
@@ -123,7 +161,13 @@ func TestLoginUserHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 
-	testCases := []handlerTestcase{
+	testCases := []struct {
+		name                   string
+		jwtMaker               *dummyJWTMaker
+		requestBody            string
+		wantResponseStatusCode int
+		wantResponse           interface{}
+	}{
 		{
 			name:                   "Valid request",
 			requestBody:            `{"user":{"email":"alice@gmail.com", "password":"pa55word1234"}}`,
@@ -132,6 +176,7 @@ func TestLoginUserHandler(t *testing.T) {
 				User: user{
 					Username: "Alice",
 					Email:    "alice@gmail.com",
+					Token:    "dummy-token",
 					Image:    "",
 					Bio:      "",
 				},
@@ -173,12 +218,29 @@ func TestLoginUserHandler(t *testing.T) {
 				Errors: []string{"body contains unknown key \"name\""},
 			},
 		},
+		{
+			name:                   "Token creation error",
+			jwtMaker:               &dummyJWTMaker{CreateTokenErr: auth.ErrInvalidToken},
+			requestBody:            `{"user":{"email":"alice@gmail.com", "password":"pa55word1234"}}`,
+			wantResponseStatusCode: http.StatusInternalServerError,
+			wantResponse: errorResponse{
+				Errors: []string{"the server encountered a problem and could not process your request"},
+			},
+		},
 	}
 
-	for i := range testCases {
-		testCases[i].requestUrlPath = "/users/login"
-		testCases[i].requestMethodType = http.MethodPost
+	for _, tc := range testCases {
+		if tc.jwtMaker == nil {
+			tc.jwtMaker = &dummyJWTMaker{}
+		}
+		ts.app.jwtMaker = tc.jwtMaker
+		testHandler(t, ts, handlerTestcase{
+			name:                   tc.name,
+			requestUrlPath:         "/users/login",
+			requestMethodType:      http.MethodPost,
+			requestBody:            tc.requestBody,
+			wantResponseStatusCode: tc.wantResponseStatusCode,
+			wantResponse:           tc.wantResponse,
+		})
 	}
-
-	testHandler(t, ts, testCases...)
 }

@@ -59,6 +59,14 @@ func TestJWTMaker_VerifyToken(t *testing.T) {
 			},
 			expectedErr: ErrInvalidToken,
 		},
+		{
+			name: "Empty token",
+			setup: func() (string, *JWTMaker) {
+				tm := NewJWTMaker("some-secret-key", "test-issuer")
+				return "", tm
+			},
+			expectedErr: ErrInvalidToken,
+		},
 	}
 
 	for _, tc := range testCases {

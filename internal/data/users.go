@@ -22,6 +22,7 @@ type User struct {
 	Password password `json:"-"`
 	Image    string   `json:"image"`
 	Bio      string   `json:"bio"`
+	Token    string   `json:"token"`
 	Version  int      `json:"-"`
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/96malhar/realworld-backend/internal/auth"
 	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/96malhar/realworld-backend/internal/vcs"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,6 +24,10 @@ type config struct {
 		maxIdleTime  time.Duration
 		maxOpenConns int
 	}
+	jwtMaker struct {
+		secretKey string
+		issuer    string
+	}
 }
 
 func (c config) LogValue() slog.Value {
@@ -41,6 +46,7 @@ type application struct {
 	config     config
 	logger     *slog.Logger
 	modelStore data.ModelStore
+	jwtMaker   jwtMaker
 	wg         sync.WaitGroup
 }
 
@@ -62,6 +68,7 @@ func main() {
 		config:     cfg,
 		logger:     logger,
 		modelStore: data.NewModelStore(db),
+		jwtMaker:   auth.NewJWTMaker(cfg.jwtMaker.secretKey, cfg.jwtMaker.issuer),
 	}
 
 	err = app.serve()
@@ -80,6 +87,9 @@ func parseConfig() config {
 	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("DB_DSN"), "PostgreSQL DSN")
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
 	flag.DurationVar(&cfg.db.maxIdleTime, "db-max-idle-time", 15*time.Minute, "PostgreSQL max connection idle time")
+
+	flag.StringVar(&cfg.jwtMaker.secretKey, "jwt-secret", os.Getenv("JWT_SECRET"), "JWT secret key")
+	flag.StringVar(&cfg.jwtMaker.issuer, "jwt-issuer", os.Getenv("JWT_ISSUER"), "JWT issuer")
 
 	// Create a new version boolean flag with the default value of false.
 	displayVersion := flag.Bool("version", false, "Display version and exit")
@@ -116,4 +126,9 @@ func openDB(cfg config) (*pgxpool.Pool, error) {
 	}
 
 	return db, nil
+}
+
+type jwtMaker interface {
+	CreateToken(userID int64, duration time.Duration) (string, error)
+	VerifyToken(tokenString string) (*auth.Claims, error)
 }
