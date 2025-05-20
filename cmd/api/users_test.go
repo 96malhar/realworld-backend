@@ -114,6 +114,15 @@ func TestRegisterUserHandler(t *testing.T) {
 				Errors: []string{"body contains badly-formed JSON (at character 36)"},
 			},
 		},
+		{
+			name:                   "Token creation error",
+			jwtMaker:               &dummyJWTMaker{CreateTokenErr: auth.ErrInvalidToken},
+			requestBody:            `{"user":{"username":"Bob2", "email":"bob2@gmail.com", "password":"pa55word1234"}}`,
+			wantResponseStatusCode: http.StatusInternalServerError,
+			wantResponse: errorResponse{
+				Errors: []string{"the server encountered a problem and could not process your request"},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
