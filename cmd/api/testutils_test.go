@@ -45,7 +45,6 @@ func newTestServer(t *testing.T) *testServer {
 	return &testServer{
 		router: app.routes(),
 		app:    app,
-		db:     testDb,
 	}
 }
 
