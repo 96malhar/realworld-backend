@@ -17,6 +17,7 @@ func (app *application) routes() *chi.Mux {
 
 	r.Post("/users", app.registerUserHandler)
 	r.Post("/users/login", app.loginUserHandler)
+	r.With(app.requireAuthenticatedUser).Get("/user", app.getCurrentUserHandler)
 
 	return r
 }

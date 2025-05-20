@@ -50,6 +50,7 @@ func (app *application) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
+		user.Token = tokenString
 		r = app.contextSetUser(r, user)
 		next.ServeHTTP(w, r)
 	})

@@ -232,3 +232,78 @@ func TestLoginUserHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestGetCurrentUserHandler(t *testing.T) {
+	ts := newTestServer(t)
+	// Register user Bob
+	registerBob := `{"user":{"username":"Bob","email":"bob@example.com","password":"passwordbob"}}`
+	resp, err := ts.executeRequest(http.MethodPost, "/users", registerBob, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Register user Alice
+	registerAlice := `{"user":{"username":"Alice","email":"alice@example.com","password":"passwordalice"}}`
+	resp, err = ts.executeRequest(http.MethodPost, "/users", registerAlice, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Login as Bob
+	loginBob := `{"user":{"email":"bob@example.com","password":"passwordbob"}}`
+	resp, err = ts.executeRequest(http.MethodPost, "/users/login", loginBob, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var loginRespBob userResponse
+	readJsonResponse(t, resp.Body, &loginRespBob)
+	tokenBob := loginRespBob.User.Token
+
+	// Login as Alice
+	loginAlice := `{"user":{"email":"alice@example.com","password":"passwordalice"}}`
+	resp, err = ts.executeRequest(http.MethodPost, "/users/login", loginAlice, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var loginRespAlice userResponse
+	readJsonResponse(t, resp.Body, &loginRespAlice)
+	tokenAlice := loginRespAlice.User.Token
+
+	testCases := []handlerTestcase{
+		{
+			name:                   "authenticated user Bob",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodGet,
+			requestHeader:          map[string]string{"Authorization": "Token " + tokenBob},
+			wantResponseStatusCode: http.StatusOK,
+			wantResponse: userResponse{
+				User: user{
+					Username: "Bob",
+					Email:    "bob@example.com",
+					Token:    tokenBob,
+				},
+			},
+		},
+		{
+			name:                   "authenticated user Alice",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodGet,
+			requestHeader:          map[string]string{"Authorization": "Token " + tokenAlice},
+			wantResponseStatusCode: http.StatusOK,
+			wantResponse: userResponse{
+				User: user{
+					Username: "Alice",
+					Email:    "alice@example.com",
+					Token:    tokenAlice,
+				},
+			},
+		},
+		{
+			name:                   "anonymous user",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodGet,
+			wantResponseStatusCode: http.StatusUnauthorized,
+			wantResponse: errorResponse{
+				Errors: []string{"invalid or missing authentication token"},
+			},
+		},
+	}
+
+	testHandler(t, ts, testCases...)
+}

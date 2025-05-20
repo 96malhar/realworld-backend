@@ -126,3 +126,17 @@ func (app *application) loginUserHandler(w http.ResponseWriter, r *http.Request)
 		app.serverErrorResponse(w, r, err)
 	}
 }
+
+// getCurrentUserHandler returns the currently authenticated user.
+func (app *application) getCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
+	user := app.contextGetUser(r)
+	if user.IsAnonymous() {
+		app.invalidAuthenticationTokenResponse(w, r)
+		return
+	}
+
+	err := app.writeJSON(w, http.StatusOK, envelope{"user": user}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
