@@ -26,4 +26,7 @@ type UserStoreInterface interface {
 
 	// GetByEmail returns a specific record from the users table.
 	GetByEmail(email string) (*User, error)
+
+	// GetByID retrieves a specific record from the users table by ID.
+	GetByID(id int64) (*User, error)
 }

@@ -15,6 +15,8 @@ var (
 	ErrDuplicateUsername = errors.New("duplicate username")
 )
 
+var AnonymousUser = &User{}
+
 type User struct {
 	ID       int64    `json:"-"`
 	Username string   `json:"username"`
@@ -24,6 +26,11 @@ type User struct {
 	Bio      string   `json:"bio"`
 	Token    string   `json:"token"`
 	Version  int      `json:"-"`
+}
+
+// IsAnonymous returns true if the user is the special AnonymousUser user.
+func (u *User) IsAnonymous() bool {
+	return u == AnonymousUser
 }
 
 type password struct {
@@ -137,6 +144,29 @@ func (s UserStore) GetByEmail(email string) (*User, error) {
 		default:
 			return nil, err
 		}
+	}
+
+	return &user, nil
+}
+
+// GetByID retrieves a user by their ID from the database.
+func (s UserStore) GetByID(id int64) (*User, error) {
+	query := `SELECT id, username, email, image, bio, version FROM users WHERE id = $1`
+
+	var user User
+	err := s.db.QueryRow(context.Background(), query, id).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.Image,
+		&user.Bio,
+		&user.Version,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, err
 	}
 
 	return &user, nil

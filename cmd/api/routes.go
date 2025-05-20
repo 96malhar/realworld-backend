@@ -11,7 +11,7 @@ func (app *application) routes() *chi.Mux {
 	r.NotFound(app.notFoundResponse)
 	r.MethodNotAllowed(app.methodNotAllowedResponse)
 
-	r.Use(app.recoverPanic)
+	r.Use(app.recoverPanic, app.authenticate)
 
 	r.Get("/healthcheck", app.healthcheckHandler)
 
