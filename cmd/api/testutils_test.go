@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/96malhar/realworld-backend/internal/auth"
 	"github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -38,6 +39,7 @@ func newTestServer(t *testing.T) *testServer {
 		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 		config:     config{env: "development"},
 		modelStore: data.NewModelStore(testDb),
+		jwtMaker:   auth.NewJWTMaker("test-secret-key", "conduit-tests"),
 	}
 
 	return &testServer{
@@ -133,4 +135,31 @@ func readJsonResponse(t *testing.T, body io.Reader, dst any) {
 	dec.DisallowUnknownFields()
 	err := dec.Decode(dst)
 	require.NoError(t, err)
+}
+
+type dummyJWTMaker struct {
+	TokenToReturn  string
+	ClaimsToReturn *auth.Claims
+	CreateTokenErr error
+	VerifyTokenErr error
+}
+
+func (d *dummyJWTMaker) CreateToken(userID int64, duration time.Duration) (string, error) {
+	if d.CreateTokenErr != nil {
+		return "", d.CreateTokenErr
+	}
+	if d.TokenToReturn != "" {
+		return d.TokenToReturn, nil
+	}
+	return "dummy-token", nil
+}
+
+func (d *dummyJWTMaker) VerifyToken(tokenString string) (*auth.Claims, error) {
+	if d.VerifyTokenErr != nil {
+		return nil, d.VerifyTokenErr
+	}
+	if d.ClaimsToReturn != nil {
+		return d.ClaimsToReturn, nil
+	}
+	return &auth.Claims{UserID: 1}, nil
 }

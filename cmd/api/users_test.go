@@ -2,11 +2,9 @@ package main
 
 import (
 	"github.com/96malhar/realworld-backend/internal/auth"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
-	"time"
 )
 
 type userResponse struct {
@@ -19,40 +17,6 @@ type user struct {
 	Image    string `json:"image"`
 	Bio      string `json:"bio"`
 	Token    string `json:"token"`
-}
-
-type dummyJWTMaker struct {
-	TokenToReturn  string
-	ClaimsToReturn *auth.Claims
-	CreateTokenErr error
-	VerifyTokenErr error
-}
-
-func (d *dummyJWTMaker) CreateToken(userID int64, duration time.Duration) (string, error) {
-	if d.CreateTokenErr != nil {
-		return "", d.CreateTokenErr
-	}
-	if d.TokenToReturn != "" {
-		return d.TokenToReturn, nil
-	}
-	return "dummy-token", nil
-}
-
-func (d *dummyJWTMaker) VerifyToken(tokenString string) (*auth.Claims, error) {
-	if d.VerifyTokenErr != nil {
-		return nil, d.VerifyTokenErr
-	}
-	if d.ClaimsToReturn != nil {
-		return d.ClaimsToReturn, nil
-	}
-	return &auth.Claims{
-		UserID: 1,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    "test",
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-		},
-	}, nil
 }
 
 var seedUserRequest = `{
@@ -72,10 +36,17 @@ func TestRegisterUserHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 
-	testCases := []handlerTestcase{
+	testCases := []struct {
+		name                   string
+		jwtMaker               *dummyJWTMaker
+		requestBody            string
+		wantResponseStatusCode int
+		wantResponse           any
+	}{
 		{
 			name:                   "Valid request",
 			requestBody:            `{"user":{"username":"Bob", "email":"bob@gmail.com", "password":"pa55word1234"}}`,
+			jwtMaker:               &dummyJWTMaker{},
 			wantResponseStatusCode: http.StatusCreated,
 			wantResponse: userResponse{
 				User: user{
@@ -83,6 +54,7 @@ func TestRegisterUserHandler(t *testing.T) {
 					Email:    "bob@gmail.com",
 					Image:    "",
 					Bio:      "",
+					Token:    "dummy-token",
 				},
 			},
 		},
@@ -144,12 +116,19 @@ func TestRegisterUserHandler(t *testing.T) {
 		},
 	}
 
-	for i := range testCases {
-		testCases[i].requestUrlPath = "/users"
-		testCases[i].requestMethodType = http.MethodPost
+	for _, tc := range testCases {
+		if tc.jwtMaker != nil {
+			ts.app.jwtMaker = tc.jwtMaker
+		}
+		testHandler(t, ts, handlerTestcase{
+			name:                   tc.name,
+			requestUrlPath:         "/users",
+			requestMethodType:      http.MethodPost,
+			requestBody:            tc.requestBody,
+			wantResponseStatusCode: tc.wantResponseStatusCode,
+			wantResponse:           tc.wantResponse,
+		})
 	}
-
-	testHandler(t, ts, testCases...)
 }
 
 func TestLoginUserHandler(t *testing.T) {
@@ -166,11 +145,12 @@ func TestLoginUserHandler(t *testing.T) {
 		jwtMaker               *dummyJWTMaker
 		requestBody            string
 		wantResponseStatusCode int
-		wantResponse           interface{}
+		wantResponse           any
 	}{
 		{
 			name:                   "Valid request",
 			requestBody:            `{"user":{"email":"alice@gmail.com", "password":"pa55word1234"}}`,
+			jwtMaker:               &dummyJWTMaker{},
 			wantResponseStatusCode: http.StatusOK,
 			wantResponse: userResponse{
 				User: user{
@@ -230,10 +210,9 @@ func TestLoginUserHandler(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		if tc.jwtMaker == nil {
-			tc.jwtMaker = &dummyJWTMaker{}
+		if tc.jwtMaker != nil {
+			ts.app.jwtMaker = tc.jwtMaker
 		}
-		ts.app.jwtMaker = tc.jwtMaker
 		testHandler(t, ts, handlerTestcase{
 			name:                   tc.name,
 			requestUrlPath:         "/users/login",
