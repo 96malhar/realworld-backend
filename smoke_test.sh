@@ -44,5 +44,19 @@ if [[ $RESPONSE != "$EXPECTED" ]]; then
   exit 1
 fi
 
+# Register a new user
+REGISTER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:4000/users -H "Content-Type: application/json" -d '{"user":{"username":"smoketestuser","email":"smoketestuser@example.com","password":"smoketestpass"}}')
+if [[ $REGISTER_STATUS -ne 201 ]]; then
+  echo "Smoke test failed. User registration did not succeed. Status: $REGISTER_STATUS"
+  exit 1
+fi
+
+# Login with the new user
+LOGIN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:4000/users/login -H "Content-Type: application/json" -d '{"user":{"email":"smoketestuser@example.com","password":"smoketestpass"}}')
+if [[ $LOGIN_STATUS -ne 200 ]]; then
+  echo "Smoke test failed. User login did not succeed. Status: $LOGIN_STATUS"
+  exit 1
+fi
+
 SUCCESS="true"
 exit 0
