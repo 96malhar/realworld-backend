@@ -30,7 +30,6 @@ type errorResponse struct {
 type testServer struct {
 	router http.Handler
 	app    *application
-	db     *pgxpool.Pool
 }
 
 func newTestServer(t *testing.T) *testServer {
