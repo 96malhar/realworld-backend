@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/96malhar/realworld-backend/internal/validator"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 	"time"
 )
@@ -131,6 +132,101 @@ func (app *application) loginUserHandler(w http.ResponseWriter, r *http.Request)
 func (app *application) getCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	user := app.contextGetUser(r)
 	err := app.writeJSON(w, http.StatusOK, envelope{"user": user}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
+
+// getProfileHandler returns a user's profile, including follow status.
+func (app *application) getProfileHandler(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
+	targetUser, err := app.modelStore.Users.GetByUsername(username)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			app.notFoundResponse(w, r)
+			return
+		}
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	var following bool
+	user := app.contextGetUser(r)
+	if !user.IsAnonymous() {
+		following, _ = app.modelStore.Users.IsFollowing(user.ID, targetUser.ID)
+	}
+
+	profile := data.Profile{
+		Username:  targetUser.Username,
+		Bio:       targetUser.Bio,
+		Image:     targetUser.Image,
+		Following: following,
+	}
+	err = app.writeJSON(w, http.StatusOK, envelope{"profile": profile}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
+
+// followUserHandler lets the authenticated user follow another user.
+func (app *application) followUserHandler(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
+	targetUser, err := app.modelStore.Users.GetByUsername(username)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			app.notFoundResponse(w, r)
+			return
+		}
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+	user := app.contextGetUser(r)
+	if user.ID == targetUser.ID {
+		app.failedValidationResponse(w, r, []string{"cannot follow yourself"})
+		return
+	}
+	err = app.modelStore.Users.FollowUser(user.ID, targetUser.ID)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+	profile := data.Profile{
+		Username:  targetUser.Username,
+		Bio:       targetUser.Bio,
+		Image:     targetUser.Image,
+		Following: true,
+	}
+	err = app.writeJSON(w, http.StatusOK, envelope{"profile": profile}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
+
+// unfollowUserHandler lets the authenticated user unfollow another user.
+func (app *application) unfollowUserHandler(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
+	targetUser, err := app.modelStore.Users.GetByUsername(username)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			app.notFoundResponse(w, r)
+			return
+		}
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+	user := app.contextGetUser(r)
+	err = app.modelStore.Users.UnfollowUser(user.ID, targetUser.ID)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+	profile := data.Profile{
+		Username:  targetUser.Username,
+		Bio:       targetUser.Bio,
+		Image:     targetUser.Image,
+		Following: false,
+	}
+	err = app.writeJSON(w, http.StatusOK, envelope{"profile": profile}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 	}

@@ -28,6 +28,14 @@ type User struct {
 	Version  int      `json:"-"`
 }
 
+// Profile represents a user's public profile with follow status.
+type Profile struct {
+	Username  string `json:"username"`
+	Bio       string `json:"bio"`
+	Image     string `json:"image"`
+	Following bool   `json:"following"`
+}
+
 // IsAnonymous returns true if the user is the special AnonymousUser user.
 func (u *User) IsAnonymous() bool {
 	return u == AnonymousUser
@@ -170,4 +178,56 @@ func (s UserStore) GetByID(id int64) (*User, error) {
 	}
 
 	return &user, nil
+}
+
+// GetByUsername retrieves a user by their username from the database.
+func (s UserStore) GetByUsername(username string) (*User, error) {
+	query := `SELECT id, username, email, image, bio, version FROM users WHERE username = $1`
+	var user User
+	err := s.db.QueryRow(context.Background(), query, username).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.Image,
+		&user.Bio,
+		&user.Version,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+// FollowUser creates a follow relationship between two users.
+func (s UserStore) FollowUser(followerID, followedID int64) error {
+	if followerID == followedID {
+		return errors.New("cannot follow yourself")
+	}
+	query := `INSERT INTO follows (follower_id, followed_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err := s.db.Exec(ctx, query, followerID, followedID)
+	return err
+}
+
+// UnfollowUser removes a follow relationship between two users.
+func (s UserStore) UnfollowUser(followerID, followedID int64) error {
+	query := `DELETE FROM follows WHERE follower_id = $1 AND followed_id = $2`
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err := s.db.Exec(ctx, query, followerID, followedID)
+	return err
+}
+
+// IsFollowing checks if followerID is following followedID.
+func (s UserStore) IsFollowing(followerID, followedID int64) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id = $1 AND followed_id = $2)`
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var exists bool
+	err := s.db.QueryRow(ctx, query, followerID, followedID).Scan(&exists)
+	return exists, err
 }

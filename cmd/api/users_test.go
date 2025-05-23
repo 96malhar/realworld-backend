@@ -19,6 +19,17 @@ type user struct {
 	Token    string `json:"token"`
 }
 
+type profile struct {
+	Username  string `json:"username"`
+	Bio       string `json:"bio"`
+	Image     string `json:"image"`
+	Following bool   `json:"following"`
+}
+
+type profileResponse struct {
+	Profile profile `json:"profile"`
+}
+
 var seedUserRequest = `{
 		"user": {
 			"username": "Alice",
@@ -27,7 +38,15 @@ var seedUserRequest = `{
 			}
 		}`
 
+func registerUser(t *testing.T, ts *testServer, username, email, password string) {
+	register := `{"user":{"username":"` + username + `","email":"` + email + `","password":"` + password + `"}}`
+	resp, err := ts.executeRequest(http.MethodPost, "/users", register, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
 func TestRegisterUserHandler(t *testing.T) {
+	t.Parallel()
 	ts := newTestServer(t)
 
 	// Insert a seed user
@@ -141,6 +160,7 @@ func TestRegisterUserHandler(t *testing.T) {
 }
 
 func TestLoginUserHandler(t *testing.T) {
+	t.Parallel()
 	ts := newTestServer(t)
 
 	// Insert a seed user
@@ -234,22 +254,17 @@ func TestLoginUserHandler(t *testing.T) {
 }
 
 func TestGetCurrentUserHandler(t *testing.T) {
+	t.Parallel()
 	ts := newTestServer(t)
 	// Register user Bob
-	registerBob := `{"user":{"username":"Bob","email":"bob@example.com","password":"passwordbob"}}`
-	resp, err := ts.executeRequest(http.MethodPost, "/users", registerBob, nil)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	registerUser(t, ts, "Bob", "bob@example.com", "passwordbob")
 
 	// Register user Alice
-	registerAlice := `{"user":{"username":"Alice","email":"alice@example.com","password":"passwordalice"}}`
-	resp, err = ts.executeRequest(http.MethodPost, "/users", registerAlice, nil)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	registerUser(t, ts, "Alice", "alice@example.com", "passwordalice")
 
 	// Login as Bob
 	loginBob := `{"user":{"email":"bob@example.com","password":"passwordbob"}}`
-	resp, err = ts.executeRequest(http.MethodPost, "/users/login", loginBob, nil)
+	resp, err := ts.executeRequest(http.MethodPost, "/users/login", loginBob, nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var loginRespBob userResponse
@@ -305,5 +320,225 @@ func TestGetCurrentUserHandler(t *testing.T) {
 		},
 	}
 
+	testHandler(t, ts, testCases...)
+}
+
+func TestGetProfileUserHandler(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	// Register Alice, Bob and Charlie
+	registerUser(t, ts, "Alice", "alice@example.com", "alicepassword")
+	registerUser(t, ts, "Bob", "bob@example.com", "bobpassword")
+	registerUser(t, ts, "Charlie", "charlie@example.com", "charliepassword")
+
+	// Login as Bob
+	loginBob := `{"user":{"email":"bob@example.com","password":"bobpassword"}}`
+	resp, err := ts.executeRequest(http.MethodPost, "/users/login", loginBob, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var loginResp userResponse
+	readJsonResponse(t, resp.Body, &loginResp)
+	bobToken := loginResp.User.Token
+
+	// Make Bob follow Alice
+	headers := map[string]string{"Authorization": "Token " + bobToken}
+	resp, err = ts.executeRequest(http.MethodPost, "/profiles/Alice/follow", "", headers)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	testCases := []handlerTestcase{
+		{
+			name:                   "anonymous user gets Alice's profile",
+			requestUrlPath:         "/profiles/Alice",
+			requestMethodType:      http.MethodGet,
+			wantResponseStatusCode: http.StatusOK,
+			wantResponse: profileResponse{
+				Profile: profile{
+					Username:  "Alice",
+					Bio:       "",
+					Image:     "",
+					Following: false,
+				},
+			},
+		},
+		{
+			name:                   "authenticated user follows Alice and gets profile",
+			requestUrlPath:         "/profiles/Alice",
+			requestMethodType:      http.MethodGet,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusOK,
+			wantResponse: profileResponse{
+				Profile: profile{
+					Username:  "Alice",
+					Bio:       "",
+					Image:     "",
+					Following: true,
+				},
+			},
+		},
+		{
+			name:                   "authenticated user gets charlie's profile and not following",
+			requestUrlPath:         "/profiles/Charlie",
+			requestMethodType:      http.MethodGet,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusOK,
+			wantResponse: profileResponse{
+				Profile: profile{
+					Username:  "Charlie",
+					Bio:       "",
+					Image:     "",
+					Following: false,
+				},
+			},
+		},
+		{
+			name:                   "profile for non-existent user returns 404",
+			requestUrlPath:         "/profiles/nonexistent",
+			requestMethodType:      http.MethodGet,
+			wantResponseStatusCode: http.StatusNotFound,
+		},
+	}
+
+	testHandler(t, ts, testCases...)
+}
+
+func TestFollowUserHandler(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	// Register Alice and Bob
+	registerUser(t, ts, "Alice", "alice@example.com", "alicepassword")
+	registerUser(t, ts, "Bob", "bob@example.com", "bobpassword")
+
+	// Login as Bob
+	loginBob := `{"user":{"email":"bob@example.com","password":"bobpassword"}}`
+	resp, err := ts.executeRequest(http.MethodPost, "/users/login", loginBob, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var loginResp userResponse
+	readJsonResponse(t, resp.Body, &loginResp)
+	bobToken := loginResp.User.Token
+
+	testCases := []handlerTestcase{
+		{
+			name:                   "authenticated user follows Alice",
+			requestUrlPath:         "/profiles/Alice/follow",
+			requestMethodType:      http.MethodPost,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusOK,
+			wantResponse: profileResponse{
+				Profile: profile{
+					Username:  "Alice",
+					Bio:       "",
+					Image:     "",
+					Following: true,
+				},
+			},
+		},
+		{
+			name:                   "anonymous user cannot follow Alice",
+			requestUrlPath:         "/profiles/Alice/follow",
+			requestMethodType:      http.MethodPost,
+			wantResponseStatusCode: http.StatusUnauthorized,
+			wantResponse: errorResponse{
+				Errors: []string{"invalid or missing authentication token"},
+			},
+		},
+		{
+			name:                   "authenticated user cannot follow non-existent user",
+			requestUrlPath:         "/profiles/NonExistent/follow",
+			requestMethodType:      http.MethodPost,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusNotFound,
+		},
+		{
+			name:                   "user cannot follow themselves",
+			requestUrlPath:         "/profiles/Bob/follow",
+			requestMethodType:      http.MethodPost,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusUnprocessableEntity,
+			wantResponse: errorResponse{
+				Errors: []string{"cannot follow yourself"},
+			},
+		},
+	}
+	testHandler(t, ts, testCases...)
+}
+
+func TestUnfollowUserHandler(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	// Register Alice and Bob
+	registerUser(t, ts, "Alice", "alice@example.com", "alicepassword")
+	registerUser(t, ts, "Bob", "bob@example.com", "bobpassword")
+
+	// Login as Bob
+	loginBob := `{"user":{"email":"bob@example.com","password":"bobpassword"}}`
+	resp, err := ts.executeRequest(http.MethodPost, "/users/login", loginBob, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var loginResp userResponse
+	readJsonResponse(t, resp.Body, &loginResp)
+	bobToken := loginResp.User.Token
+
+	// Bob follows Alice
+	headers := map[string]string{"Authorization": "Token " + bobToken}
+	resp, err = ts.executeRequest(http.MethodPost, "/profiles/Alice/follow", "", headers)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var followResp profileResponse
+	readJsonResponse(t, resp.Body, &followResp)
+	require.Equal(t, true, followResp.Profile.Following)
+
+	testCases := []handlerTestcase{
+		{
+			name:                   "authenticated user unfollows Alice",
+			requestUrlPath:         "/profiles/Alice/follow",
+			requestMethodType:      http.MethodDelete,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusOK,
+			wantResponse: profileResponse{
+				Profile: profile{
+					Username:  "Alice",
+					Bio:       "",
+					Image:     "",
+					Following: false,
+				},
+			},
+		},
+		{
+			name:                   "anonymous user cannot unfollow Alice",
+			requestUrlPath:         "/profiles/Alice/follow",
+			requestMethodType:      http.MethodDelete,
+			wantResponseStatusCode: http.StatusUnauthorized,
+			wantResponse: errorResponse{
+				Errors: []string{"invalid or missing authentication token"},
+			},
+		},
+		{
+			name:                   "authenticated user cannot unfollow non-existent user",
+			requestUrlPath:         "/profiles/NonExistent/follow",
+			requestMethodType:      http.MethodDelete,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusNotFound,
+		},
+		{
+			name:                   "user cannot unfollow themselves",
+			requestUrlPath:         "/profiles/Bob/follow",
+			requestMethodType:      http.MethodDelete,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusOK, // Unfollowing yourself is a no-op, returns not following
+			wantResponse: profileResponse{
+				Profile: profile{
+					Username:  "Bob",
+					Bio:       "",
+					Image:     "",
+					Following: false,
+				},
+			},
+		},
+	}
 	testHandler(t, ts, testCases...)
 }
