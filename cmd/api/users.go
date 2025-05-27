@@ -231,3 +231,77 @@ func (app *application) unfollowUserHandler(w http.ResponseWriter, r *http.Reque
 		app.serverErrorResponse(w, r, err)
 	}
 }
+
+func (app *application) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+	user := app.contextGetUser(r)
+
+	var input struct {
+		User struct {
+			Email    *string `json:"email"`
+			Password *string `json:"password"`
+			Username *string `json:"username"`
+			Bio      *string `json:"bio"`
+			Image    *string `json:"image"`
+		} `json:"user"`
+	}
+
+	err := app.readJSON(w, r, &input)
+	if err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	updatedUser := *user
+	if input.User.Email != nil {
+		updatedUser.Email = *input.User.Email
+	}
+	if input.User.Username != nil {
+		updatedUser.Username = *input.User.Username
+	}
+	if input.User.Bio != nil {
+		updatedUser.Bio = *input.User.Bio
+	}
+	if input.User.Image != nil {
+		updatedUser.Image = *input.User.Image
+	}
+	if input.User.Password != nil {
+		err := updatedUser.Password.Set(*input.User.Password)
+		if err != nil {
+			app.serverErrorResponse(w, r, err)
+			return
+		}
+	}
+
+	v := validator.New()
+	if data.ValidateUser(v, updatedUser); !v.Valid() {
+		app.failedValidationResponse(w, r, v.Errors)
+		return
+	}
+
+	err = app.modelStore.Users.Update(&updatedUser)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrDuplicateEmail):
+			v.AddError("a user with this email address already exists")
+			app.failedValidationResponse(w, r, v.Errors)
+		case errors.Is(err, data.ErrDuplicateUsername):
+			v.AddError("a user with this username already exists")
+			app.failedValidationResponse(w, r, v.Errors)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	token, err := app.jwtMaker.CreateToken(user.ID, 24*time.Hour)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+	updatedUser.Token = token
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"user": updatedUser}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}

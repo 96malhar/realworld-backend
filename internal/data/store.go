@@ -35,4 +35,6 @@ type UserStoreInterface interface {
 	UnfollowUser(followerID, followedID int64) error
 	// Check if following
 	IsFollowing(followerID, followedID int64) (bool, error)
+	// Update an existing user record.
+	Update(user *User) error
 }

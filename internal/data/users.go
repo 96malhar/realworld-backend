@@ -159,13 +159,18 @@ func (s UserStore) GetByEmail(email string) (*User, error) {
 
 // GetByID retrieves a user by their ID from the database.
 func (s UserStore) GetByID(id int64) (*User, error) {
-	query := `SELECT id, username, email, image, bio, version FROM users WHERE id = $1`
+	query := `
+		SELECT id, username, email, password_hash, image, bio, version
+		FROM users
+		WHERE id = $1`
 
 	var user User
+
 	err := s.db.QueryRow(context.Background(), query, id).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,
+		&user.Password.hash,
 		&user.Image,
 		&user.Bio,
 		&user.Version,
@@ -230,4 +235,17 @@ func (s UserStore) IsFollowing(followerID, followedID int64) (bool, error) {
 	var exists bool
 	err := s.db.QueryRow(ctx, query, followerID, followedID).Scan(&exists)
 	return exists, err
+}
+
+// Update updates an existing user record in the database.
+func (s UserStore) Update(user *User) error {
+	query := `
+		UPDATE users
+		SET username = $1, email = $2, password_hash = $3, image = $4, bio = $5, version = version + 1
+		WHERE id = $6
+		RETURNING version`
+	args := []any{user.Username, user.Email, user.Password.hash, user.Image, user.Bio, user.ID}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return s.db.QueryRow(ctx, query, args...).Scan(&user.Version)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/96malhar/realworld-backend/internal/auth"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
@@ -43,6 +44,17 @@ func registerUser(t *testing.T, ts *testServer, username, email, password string
 	resp, err := ts.executeRequest(http.MethodPost, "/users", register, nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
+func loginUser(t *testing.T, ts *testServer, email, password string) string {
+	login := `{"user":{"email":"` + email + `","password":"` + password + `"}}`
+	resp, err := ts.executeRequest(http.MethodPost, "/users/login", login, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var userResp userResponse
+	readJsonResponse(t, resp.Body, &userResp)
+	return userResp.User.Token
 }
 
 func TestRegisterUserHandler(t *testing.T) {
@@ -537,6 +549,98 @@ func TestUnfollowUserHandler(t *testing.T) {
 					Image:     "",
 					Following: false,
 				},
+			},
+		},
+	}
+	testHandler(t, ts, testCases...)
+}
+
+func TestUpdateUserHandler(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	registerUser(t, ts, "Alice", "alice@example.com", "alicepassword")
+	registerUser(t, ts, "Bob", "bob@example.com", "bobpassword")
+	registerUser(t, ts, "Charlie", "charlie@example.com", "charliepassword")
+
+	aliceToken := loginUser(t, ts, "alice@example.com", "alicepassword")
+	bobToken := loginUser(t, ts, "bob@example.com", "bobpassword")
+	charlieToken := loginUser(t, ts, "charlie@example.com", "charliepassword")
+
+	testCases := []handlerTestcase{
+		{
+			name:                   "update username and bio",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodPut,
+			requestHeader:          map[string]string{"Authorization": "Token " + aliceToken},
+			requestBody:            `{"user":{"username":"AliceNew","bio":"new bio"}}`,
+			wantResponseStatusCode: http.StatusOK,
+			additionalChecks: func(t *testing.T, res *http.Response) {
+
+				// deserialize the response body
+				var userResp userResponse
+				readJsonResponse(t, res.Body, &userResp)
+				assert.Equal(t, "AliceNew", userResp.User.Username, "username should be updated")
+				assert.Equal(t, "new bio", userResp.User.Bio, "bio should be updated")
+				assert.NotEmpty(t, userResp.User.Token, "token should not be empty")
+				assert.Equal(t, "alice@example.com", userResp.User.Email, "email should remain unchanged")
+			},
+		},
+		{
+			name:                   "update email and image",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodPut,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			requestBody:            `{"user":{"email":"bob2@example.com","image":"https://img.com/a.png"}}`,
+			wantResponseStatusCode: http.StatusOK,
+			additionalChecks: func(t *testing.T, res *http.Response) {
+				// deserialize the response body
+				var userResp userResponse
+				readJsonResponse(t, res.Body, &userResp)
+				assert.Equal(t, "Bob", userResp.User.Username, "username should remain unchanged")
+				assert.Equal(t, "bob2@example.com", userResp.User.Email, "email should be updated")
+				assert.Equal(t, "https://img.com/a.png", userResp.User.Image, "image should be updated")
+				assert.NotEmpty(t, userResp.User.Token, "token should not be empty")
+				assert.Equal(t, "", userResp.User.Bio, "bio should remain unchanged")
+			},
+		},
+		{
+			name:                   "update password only",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodPut,
+			requestHeader:          map[string]string{"Authorization": "Token " + charlieToken},
+			requestBody:            `{"user":{"password":"newpassword123"}}`,
+			wantResponseStatusCode: http.StatusOK,
+			additionalChecks: func(t *testing.T, res *http.Response) {
+				// deserialize the response body
+				var userResp userResponse
+				readJsonResponse(t, res.Body, &userResp)
+				assert.Equal(t, "Charlie", userResp.User.Username, "username should remain unchanged")
+				assert.Equal(t, "charlie@example.com", userResp.User.Email, "email should remain unchanged")
+				assert.Equal(t, "", userResp.User.Image, "image should remain unchanged")
+				assert.Equal(t, "", userResp.User.Bio, "bio should remain unchanged")
+				assert.NotEmpty(t, userResp.User.Token, "token should not be empty")
+			},
+		},
+		{
+			name:                   "invalid email",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodPut,
+			requestHeader:          map[string]string{"Authorization": "Token " + aliceToken},
+			requestBody:            `{"user":{"email":"bademail"}}`,
+			wantResponseStatusCode: http.StatusUnprocessableEntity,
+			wantResponse: errorResponse{
+				Errors: []string{"email must be a valid email address"},
+			},
+		},
+		{
+			name:                   "unauthenticated user",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodPut,
+			requestBody:            `{"user":{"bio":"should fail"}}`,
+			wantResponseStatusCode: http.StatusUnauthorized,
+			wantResponse: errorResponse{
+				Errors: []string{"invalid or missing authentication token"},
 			},
 		},
 	}

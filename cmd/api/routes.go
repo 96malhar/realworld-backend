@@ -15,9 +15,16 @@ func (app *application) routes() *chi.Mux {
 
 	r.Get("/healthcheck", app.healthcheckHandler)
 
-	r.Post("/users", app.registerUserHandler)
-	r.Post("/users/login", app.loginUserHandler)
-	r.With(app.requireAuthenticatedUser).Get("/user", app.getCurrentUserHandler)
+	r.Route("/users", func(r chi.Router) {
+		r.Post("/", app.registerUserHandler)
+		r.Post("/login", app.loginUserHandler)
+	})
+
+	r.Route("/user", func(r chi.Router) {
+		r.Use(app.requireAuthenticatedUser)
+		r.Get("/", app.getCurrentUserHandler)
+		r.Put("/", app.updateUserHandler)
+	})
 
 	r.Route("/profiles/{username}", func(r chi.Router) {
 		r.Get("/", app.getProfileHandler)
