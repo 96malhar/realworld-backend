@@ -1,11 +1,12 @@
 package main
 
 import (
+	"net/http"
+	"testing"
+
 	"github.com/96malhar/realworld-backend/internal/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"net/http"
-	"testing"
 )
 
 type userResponse struct {
@@ -631,6 +632,17 @@ func TestUpdateUserHandler(t *testing.T) {
 			wantResponseStatusCode: http.StatusUnprocessableEntity,
 			wantResponse: errorResponse{
 				Errors: []string{"email must be a valid email address"},
+			},
+		},
+		{
+			name:                   "invalid password",
+			requestUrlPath:         "/user",
+			requestMethodType:      http.MethodPut,
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			requestBody:            `{"user":{"password":"short"}}`,
+			wantResponseStatusCode: http.StatusUnprocessableEntity,
+			wantResponse: errorResponse{
+				Errors: []string{"password must be at least 8 bytes long"},
 			},
 		},
 		{

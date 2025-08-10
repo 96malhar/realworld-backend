@@ -2,11 +2,12 @@ package main
 
 import (
 	"errors"
+	"net/http"
+	"time"
+
 	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/96malhar/realworld-backend/internal/validator"
 	"github.com/go-chi/chi/v5"
-	"net/http"
-	"time"
 )
 
 func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Request) {

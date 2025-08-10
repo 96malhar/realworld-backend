@@ -3,11 +3,12 @@ package data
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/96malhar/realworld-backend/internal/validator"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
-	"time"
 )
 
 var (
