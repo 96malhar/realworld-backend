@@ -425,13 +425,7 @@ func TestFollowUserHandler(t *testing.T) {
 	registerUser(t, ts, "Bob", "bob@example.com", "bobpassword")
 
 	// Login as Bob
-	loginBob := `{"user":{"email":"bob@example.com","password":"bobpassword"}}`
-	resp, err := ts.executeRequest(http.MethodPost, "/users/login", loginBob, nil)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	var loginResp userResponse
-	readJsonResponse(t, resp.Body, &loginResp)
-	bobToken := loginResp.User.Token
+	bobToken := loginUser(t, ts, "bob@example.com", "bobpassword")
 
 	testCases := []handlerTestcase{
 		{
