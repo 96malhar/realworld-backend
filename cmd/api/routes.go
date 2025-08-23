@@ -32,5 +32,9 @@ func (app *application) routes() *chi.Mux {
 		r.With(app.requireAuthenticatedUser).Delete("/follow", app.unfollowUserHandler)
 	})
 
+	r.Route("/articles", func(r chi.Router) {
+		r.With(app.requireAuthenticatedUser).Post("/", app.createArticleHandler)
+	})
+
 	return r
 }

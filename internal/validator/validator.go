@@ -3,6 +3,7 @@ package validator
 import (
 	"regexp"
 	"slices"
+	"strings"
 )
 
 // EmailRX taken from https://html.spec.whatwg.org/#valid-e-mail-address.
@@ -56,4 +57,9 @@ func Unique[T comparable](values []T) bool {
 	}
 
 	return len(values) == len(uniqueValues)
+}
+
+// NotEmptyOrWhitespace returns true if a string is empty or contains only whitespace characters.
+func NotEmptyOrWhitespace(value string) bool {
+	return strings.TrimSpace(value) != ""
 }

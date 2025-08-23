@@ -2,6 +2,7 @@ package data
 
 import (
 	"errors"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -11,12 +12,14 @@ var (
 )
 
 type ModelStore struct {
-	Users UserStoreInterface
+	Users    UserStoreInterface
+	Articles ArticleStoreInterface
 }
 
 func NewModelStore(db *pgxpool.Pool) ModelStore {
 	return ModelStore{
-		Users: &UserStore{db: db},
+		Users:    &UserStore{db: db},
+		Articles: &ArticleStore{db: db},
 	}
 }
 
@@ -29,12 +32,17 @@ type UserStoreInterface interface {
 	GetByID(id int64) (*User, error)
 	// GetByUsername retrieves a specific record from the users table by username.
 	GetByUsername(username string) (*User, error)
-	// Follow a user
+	// FollowUser records that a user is following another user
 	FollowUser(followerID, followedID int64) error
-	// Unfollow a user
+	// UnfollowUser records that a user has unfollowed another user
 	UnfollowUser(followerID, followedID int64) error
-	// Check if following
+	// IsFollowing checks if a user is following another user
 	IsFollowing(followerID, followedID int64) (bool, error)
 	// Update an existing user record.
 	Update(user *User) error
+}
+
+type ArticleStoreInterface interface {
+	// Insert a new record into the articles table.
+	Insert(article *Article) error
 }
