@@ -85,6 +85,20 @@ func TestCreateArticleHandler(t *testing.T) {
 				Errors: []string{"TagList must not contain duplicate tags"},
 			},
 		},
+		{
+			name:              "malformed JSON",
+			requestMethodType: http.MethodPost,
+			requestUrlPath:    requestUrlPath,
+			requestHeader:     authHeader,
+			requestBody: `{
+			"article": {
+				"title": "Another Article",
+				"description": "Test description",
+				"body": "Test body content",
+				"tagList": ["test", "test", "golang"]
+				`, // missing closing braces
+			wantResponseStatusCode: http.StatusBadRequest,
+		},
 	}
 
 	testHandler(t, ts, testcases...)
