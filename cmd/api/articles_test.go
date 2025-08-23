@@ -99,6 +99,14 @@ func TestCreateArticleHandler(t *testing.T) {
 				`, // missing closing braces
 			wantResponseStatusCode: http.StatusBadRequest,
 		},
+		{
+			name:                   "Wrong auth token",
+			requestMethodType:      http.MethodPost,
+			requestUrlPath:         requestUrlPath,
+			requestHeader:          map[string]string{"Authorization": "Token wrong-token"},
+			requestBody:            validRequestBody,
+			wantResponseStatusCode: http.StatusUnauthorized,
+		},
 	}
 
 	testHandler(t, ts, testcases...)
