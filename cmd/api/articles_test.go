@@ -7,6 +7,8 @@ import (
 )
 
 func TestCreateArticleHandler(t *testing.T) {
+	t.Parallel()
+
 	requestUrlPath := "/articles"
 	ts := newTestServer(t)
 	registerUser(t, ts, "bob", "bob@example.com", "password123")
@@ -64,6 +66,24 @@ func TestCreateArticleHandler(t *testing.T) {
 			requestMethodType:      http.MethodGet,
 			requestUrlPath:         requestUrlPath,
 			wantResponseStatusCode: http.StatusMethodNotAllowed,
+		},
+		{
+			name:              "Duplicate tags",
+			requestMethodType: http.MethodPost,
+			requestUrlPath:    requestUrlPath,
+			requestHeader:     authHeader,
+			requestBody: `{
+			"article": {
+				"title": "Another Article",
+				"description": "Test description",
+				"body": "Test body content",
+				"tagList": ["test", "test", "golang"]
+				}
+			}`,
+			wantResponseStatusCode: http.StatusUnprocessableEntity,
+			wantResponse: errorResponse{
+				Errors: []string{"TagList must not contain duplicate tags"},
+			},
 		},
 	}
 
