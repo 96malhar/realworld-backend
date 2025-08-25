@@ -53,6 +53,26 @@ func TestCreateArticleHandler(t *testing.T) {
 				}
 			}`,
 			wantResponseStatusCode: http.StatusUnprocessableEntity,
+			wantResponse: errorResponse{
+				Errors: []string{"Title must not be empty or whitespace only"},
+			},
+		},
+		{
+			name:              "Missing Description validation error",
+			requestMethodType: http.MethodPost,
+			requestUrlPath:    requestUrlPath,
+			requestHeader:     authHeader,
+			requestBody: `{
+			"article": {
+				"title": "test-title",
+				"body": "Test body content",
+				"tagList": ["test"]
+				}
+			}`,
+			wantResponseStatusCode: http.StatusUnprocessableEntity,
+			wantResponse: errorResponse{
+				Errors: []string{"Description must not be empty or whitespace only"},
+			},
 		},
 		{
 			name:                   "Unauthorized user",
