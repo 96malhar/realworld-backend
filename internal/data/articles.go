@@ -2,12 +2,14 @@ package data
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/96malhar/realworld-backend/internal/validator"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -89,5 +91,66 @@ func (s *ArticleStore) Insert(article *Article) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
+}
+
+// GetBySlug retrieves an article by its slug.
+func (s *ArticleStore) GetBySlug(slug string, currentUser *User) (*Article, error) {
+	query := `
+		SELECT a.id, a.slug, a.title, a.description, a.body, a.tag_list, a.created_at, a.updated_at, 
+		       a.favorites_count, u.id, u.username, u.bio, u.image
+		FROM articles a
+		JOIN users u ON a.author_id = u.id
+		WHERE a.slug = $1
+	`
+
+	var article Article
+	var author Profile
+
+	err := s.db.QueryRow(context.Background(), query, slug).Scan(
+		&article.ID,
+		&article.Slug,
+		&article.Title,
+		&article.Description,
+		&article.Body,
+		&article.TagList,
+		&article.CreatedAt,
+		&article.UpdatedAt,
+		&article.FavoritesCount,
+		&article.AuthorID,
+		&author.Username,
+		&author.Bio,
+		&author.Image,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	article.Author = author
+
+	// Check if the current user has favorited the article
+	if !currentUser.IsAnonymous() {
+		favorited, err := s.checkArticleFavorited(article.ID, currentUser.ID)
+		if err != nil {
+			return nil, err
+		}
+		article.Favorited = favorited
+	}
+	return &article, nil
+}
+
+func (s *ArticleStore) checkArticleFavorited(articleID, userID int64) (bool, error) {
+	var favorited bool
+	query := `SELECT EXISTS(SELECT 1 FROM favorites WHERE article_id = $1 AND user_id = $2)`
+	err := s.db.QueryRow(context.Background(), query, articleID, userID).Scan(&favorited)
+	if err != nil {
+		return false, err
+	}
+	return favorited, nil
 }

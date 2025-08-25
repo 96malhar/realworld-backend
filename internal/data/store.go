@@ -45,4 +45,6 @@ type UserStoreInterface interface {
 type ArticleStoreInterface interface {
 	// Insert a new record into the articles table.
 	Insert(article *Article) error
+	// GetBySlug retrieves a specific record from the articles table by slug.
+	GetBySlug(slug string, currentUser *User) (*Article, error)
 }

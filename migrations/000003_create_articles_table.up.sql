@@ -5,11 +5,12 @@ CREATE TABLE articles
     title           VARCHAR(255)        NOT NULL,
     description     TEXT,
     body            TEXT                NOT NULL,
-    tag_list        TEXT[], -- PostgreSQL array for tags
-    created_at      TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'UTC'),
-    updated_at      TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'UTC'),
-    favorites_count INTEGER   DEFAULT 0,
+    tag_list        TEXT[],
+    created_at      TIMESTAMP           NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+    updated_at      TIMESTAMP           NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+    favorites_count INTEGER             NOT NULL DEFAULT 0,
     author_id       INTEGER             NOT NULL,
+    version         INTEGER             NOT NULL DEFAULT 1,
     FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE
 );
 

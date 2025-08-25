@@ -41,6 +41,7 @@ var seedUserRequest = `{
 		}`
 
 func registerUser(t *testing.T, ts *testServer, username, email, password string) {
+	t.Helper()
 	register := `{"user":{"username":"` + username + `","email":"` + email + `","password":"` + password + `"}}`
 	resp, err := ts.executeRequest(http.MethodPost, "/users", register, nil)
 	require.NoError(t, err)
@@ -48,6 +49,7 @@ func registerUser(t *testing.T, ts *testServer, username, email, password string
 }
 
 func loginUser(t *testing.T, ts *testServer, email, password string) string {
+	t.Helper()
 	login := `{"user":{"email":"` + email + `","password":"` + password + `"}}`
 	resp, err := ts.executeRequest(http.MethodPost, "/users/login", login, nil)
 	require.NoError(t, err)

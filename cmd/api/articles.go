@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/96malhar/realworld-backend/internal/validator"
+	"github.com/go-chi/chi/v5"
 )
 
 func (app *application) createArticleHandler(w http.ResponseWriter, r *http.Request) {
@@ -46,8 +48,28 @@ func (app *application) createArticleHandler(w http.ResponseWriter, r *http.Requ
 
 	// set location header to point to the new article
 	headers := make(http.Header)
-	headers.Set("Location", "/api/articles/"+article.Slug)
+	headers.Set("Location", "/articles/"+article.Slug)
 	err = app.writeJSON(w, http.StatusCreated, envelope{}, headers)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+}
+
+func (app *application) getArticleHandler(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+
+	article, err := app.modelStore.Articles.GetBySlug(slug, app.contextGetUser(r))
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			app.notFoundResponse(w, r)
+			return
+		}
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"article": article}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
