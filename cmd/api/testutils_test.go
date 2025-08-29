@@ -101,14 +101,6 @@ func newTestApplication(db *pgxpool.Pool) *application {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		config: config{
 			env: "development",
-			db: struct {
-				dsn          string
-				maxIdleTime  time.Duration
-				maxOpenConns int
-				timeout      time.Duration
-			}{
-				timeout: 5 * time.Second,
-			},
 		},
 		modelStore: data.NewModelStore(db, 5*time.Second),
 		jwtMaker:   auth.NewJWTMaker("test-secret-key", "conduit-tests"),

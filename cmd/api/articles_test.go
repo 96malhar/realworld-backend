@@ -417,46 +417,70 @@ func TestFavoriteArticleHandler_Concurrency(t *testing.T) {
 	location := createArticle(t, ts, authorToken, "Concurrent Test Article", "Test description", "Test body content", []string{"test"})
 	slug := strings.TrimPrefix(location, "/articles/")
 
-	// Create multiple users who will favorite the same article
+	// Create multiple users concurrently who will favorite the same article
 	numUsers := 50
 	userTokens := make([]string, numUsers)
+	registrationErrs := make(chan error, numUsers)
+
+	// Register users concurrently
 	for i := 0; i < numUsers; i++ {
-		username := "user" + strconv.Itoa(i+1)
-		email := username + "@example.com"
-		registerUser(t, ts, username, email, "password123")
-		userTokens[i] = loginUser(t, ts, email, "password123")
+		go func(userIndex int) {
+			defer func() {
+				if r := recover(); r != nil {
+					registrationErrs <- r.(error)
+				}
+			}()
+
+			username := "user" + strconv.Itoa(userIndex+1)
+			email := username + "@example.com"
+
+			// Register user
+			registerUser(t, ts, username, email, "password123")
+
+			// Login user and store token
+			token := loginUser(t, ts, email, "password123")
+			userTokens[userIndex] = token
+
+			registrationErrs <- nil
+		}(i)
+	}
+
+	// Wait for all user registrations to complete
+	for i := 0; i < numUsers; i++ {
+		err := <-registrationErrs
+		require.NoError(t, err)
 	}
 
 	// Have all users favorite the article concurrently
-	errs := make(chan error, numUsers)
+	favoriteErrs := make(chan error, numUsers)
 	for i := 0; i < numUsers; i++ {
 		go func(token string) {
 			defer func() {
 				if r := recover(); r != nil {
-					errs <- r.(error)
+					favoriteErrs <- r.(error)
 				}
 			}()
 
 			headers := map[string]string{"Authorization": "Token " + token}
 			resp, err := ts.executeRequest(http.MethodPost, "/articles/"+slug+"/favorite", "", headers)
 			if err != nil {
-				errs <- err
+				favoriteErrs <- err
 				return
 			}
 			defer resp.Body.Close() // nolint: errcheck
 
 			if resp.StatusCode != http.StatusOK {
-				errs <- assert.AnError
+				favoriteErrs <- assert.AnError
 				return
 			}
 
-			errs <- nil
+			favoriteErrs <- nil
 		}(userTokens[i])
 	}
 
-	// Wait for all goroutines to complete
+	// Wait for all favorite operations to complete
 	for i := 0; i < numUsers; i++ {
-		err := <-errs
+		err := <-favoriteErrs
 		require.NoError(t, err)
 	}
 
