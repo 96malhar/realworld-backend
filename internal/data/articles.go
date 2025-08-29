@@ -154,3 +154,46 @@ func (s *ArticleStore) checkArticleFavorited(articleID, userID int64) (bool, err
 	}
 	return favorited, nil
 }
+
+// FavoriteBySlug favorites an article for the given user and returns the updated article.
+func (s *ArticleStore) FavoriteBySlug(slug string, userID int64) (*Article, error) {
+	ctx := context.Background()
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) // nolint:errcheck
+
+	// Lookup the article id first
+	var articleID int64
+	q1 := `SELECT id FROM articles WHERE slug = $1`
+	err = tx.QueryRow(ctx, q1, slug).Scan(&articleID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, err
+	}
+
+	// Insert favorite and check if a new row was inserted.
+	q2 := `INSERT INTO favorites (user_id, article_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
+	tag, err := tx.Exec(ctx, q2, userID, articleID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only increment the count if a new favorite was actually inserted.
+	if tag.RowsAffected() == 1 {
+		q3 := `UPDATE articles SET favorites_count = favorites_count + 1 WHERE id = $1`
+		if _, err := tx.Exec(ctx, q3, articleID); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	// Return the fresh article including favorited status
+	return s.GetBySlug(slug, &User{ID: userID})
+}

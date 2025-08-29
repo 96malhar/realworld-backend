@@ -75,3 +75,23 @@ func (app *application) getArticleHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 }
+
+func (app *application) favoriteArticleHandler(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	user := app.contextGetUser(r)
+
+	article, err := app.modelStore.Articles.FavoriteBySlug(slug, user.ID)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			app.notFoundResponse(w, r)
+			return
+		}
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	if err := app.writeJSON(w, http.StatusOK, envelope{"article": article}, nil); err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+}

@@ -47,4 +47,6 @@ type ArticleStoreInterface interface {
 	Insert(article *Article) error
 	// GetBySlug retrieves a specific record from the articles table by slug.
 	GetBySlug(slug string, currentUser *User) (*Article, error)
+	// FavoriteBySlug favorites the article with the given slug for the user and returns the updated article.
+	FavoriteBySlug(slug string, userID int64) (*Article, error)
 }
