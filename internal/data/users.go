@@ -104,7 +104,8 @@ func ValidateUser(v *validator.Validator, user User) {
 }
 
 type UserStore struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
 // Insert adds a new record in the users table.
@@ -116,7 +117,7 @@ func (s UserStore) Insert(user *User) error {
 
 	args := []any{user.Username, user.Email, user.Password.hash, user.Image, user.Bio}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
 	err := s.db.QueryRow(ctx, query, args...).Scan(&user.ID)
@@ -142,7 +143,7 @@ func (s UserStore) GetByEmail(email string) (*User, error) {
 
 	var user User
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
 	err := s.db.QueryRow(ctx, query, email).Scan(&user.ID, &user.Username, &user.Email, &user.Password.hash, &user.Image, &user.Bio, &user.Version)
@@ -167,7 +168,10 @@ func (s UserStore) GetByID(id int64) (*User, error) {
 
 	var user User
 
-	err := s.db.QueryRow(context.Background(), query, id).Scan(
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	err := s.db.QueryRow(ctx, query, id).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,
@@ -190,7 +194,11 @@ func (s UserStore) GetByID(id int64) (*User, error) {
 func (s UserStore) GetByUsername(username string) (*User, error) {
 	query := `SELECT id, username, email, image, bio, version FROM users WHERE username = $1`
 	var user User
-	err := s.db.QueryRow(context.Background(), query, username).Scan(
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	err := s.db.QueryRow(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,
@@ -213,7 +221,7 @@ func (s UserStore) FollowUser(followerID, followedID int64) error {
 		return errors.New("cannot follow yourself")
 	}
 	query := `INSERT INTO follows (follower_id, followed_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 	_, err := s.db.Exec(ctx, query, followerID, followedID)
 	return err
@@ -222,7 +230,7 @@ func (s UserStore) FollowUser(followerID, followedID int64) error {
 // UnfollowUser removes a follow relationship between two users.
 func (s UserStore) UnfollowUser(followerID, followedID int64) error {
 	query := `DELETE FROM follows WHERE follower_id = $1 AND followed_id = $2`
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 	_, err := s.db.Exec(ctx, query, followerID, followedID)
 	return err
@@ -231,7 +239,7 @@ func (s UserStore) UnfollowUser(followerID, followedID int64) error {
 // IsFollowing checks if followerID is following followedID.
 func (s UserStore) IsFollowing(followerID, followedID int64) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id = $1 AND followed_id = $2)`
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 	var exists bool
 	err := s.db.QueryRow(ctx, query, followerID, followedID).Scan(&exists)
@@ -246,7 +254,7 @@ func (s UserStore) Update(user *User) error {
 		WHERE id = $6
 		RETURNING version`
 	args := []any{user.Username, user.Email, user.Password.hash, user.Image, user.Bio, user.ID}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 	return s.db.QueryRow(ctx, query, args...).Scan(&user.Version)
 }

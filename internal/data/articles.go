@@ -73,7 +73,8 @@ func randomString(length int) string {
 }
 
 type ArticleStore struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
 func (s *ArticleStore) Insert(article *Article) error {
@@ -86,8 +87,11 @@ func (s *ArticleStore) Insert(article *Article) error {
 	`
 
 	args := []any{article.Slug, article.Title, article.Description, article.Body, article.TagList, article.AuthorID}
-	err := s.db.QueryRow(context.Background(), query, args...,
-	).Scan(&article.ID, &article.CreatedAt, &article.UpdatedAt)
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	err := s.db.QueryRow(ctx, query, args...).Scan(&article.ID, &article.CreatedAt, &article.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -108,7 +112,10 @@ func (s *ArticleStore) GetBySlug(slug string, currentUser *User) (*Article, erro
 	var article Article
 	var author Profile
 
-	err := s.db.QueryRow(context.Background(), query, slug).Scan(
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	err := s.db.QueryRow(ctx, query, slug).Scan(
 		&article.ID,
 		&article.Slug,
 		&article.Title,
@@ -148,7 +155,11 @@ func (s *ArticleStore) GetBySlug(slug string, currentUser *User) (*Article, erro
 func (s *ArticleStore) checkArticleFavorited(articleID, userID int64) (bool, error) {
 	var favorited bool
 	query := `SELECT EXISTS(SELECT 1 FROM favorites WHERE article_id = $1 AND user_id = $2)`
-	err := s.db.QueryRow(context.Background(), query, articleID, userID).Scan(&favorited)
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	err := s.db.QueryRow(ctx, query, articleID, userID).Scan(&favorited)
 	if err != nil {
 		return false, err
 	}
@@ -157,7 +168,9 @@ func (s *ArticleStore) checkArticleFavorited(articleID, userID int64) (bool, err
 
 // FavoriteBySlug favorites an article for the given user and returns the updated article.
 func (s *ArticleStore) FavoriteBySlug(slug string, userID int64) (*Article, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, err

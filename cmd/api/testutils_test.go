@@ -4,10 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/96malhar/realworld-backend/internal/auth"
-	"github.com/golang-migrate/migrate/v4/database/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,10 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/96malhar/realworld-backend/internal/auth"
 	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,12 +34,7 @@ type testServer struct {
 
 func newTestServer(t *testing.T) *testServer {
 	testDb := newTestDB(t)
-	app := &application{
-		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-		config:     config{env: "development"},
-		modelStore: data.NewModelStore(testDb),
-		jwtMaker:   auth.NewJWTMaker("test-secret-key", "conduit-tests"),
-	}
+	app := newTestApplication(testDb)
 
 	return &testServer{
 		router: app.routes(),
@@ -103,9 +98,20 @@ func getDbConn(t *testing.T, dsn string) *pgxpool.Pool {
 
 func newTestApplication(db *pgxpool.Pool) *application {
 	return &application{
-		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-		config:     config{env: "development"},
-		modelStore: data.NewModelStore(db),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		config: config{
+			env: "development",
+			db: struct {
+				dsn          string
+				maxIdleTime  time.Duration
+				maxOpenConns int
+				timeout      time.Duration
+			}{
+				timeout: 5 * time.Second,
+			},
+		},
+		modelStore: data.NewModelStore(db, 5*time.Second),
+		jwtMaker:   auth.NewJWTMaker("test-secret-key", "conduit-tests"),
 	}
 }
 

@@ -4,14 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/96malhar/realworld-backend/internal/auth"
-	"github.com/96malhar/realworld-backend/internal/data"
-	"github.com/96malhar/realworld-backend/internal/vcs"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/96malhar/realworld-backend/internal/auth"
+	"github.com/96malhar/realworld-backend/internal/data"
+	"github.com/96malhar/realworld-backend/internal/vcs"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var version = vcs.Version()
@@ -23,6 +24,7 @@ type config struct {
 		dsn          string
 		maxIdleTime  time.Duration
 		maxOpenConns int
+		timeout      time.Duration
 	}
 	jwtMaker struct {
 		secretKey string
@@ -37,6 +39,7 @@ func (c config) LogValue() slog.Value {
 
 		slog.Int("db-max-open-conns", c.db.maxOpenConns),
 		slog.Duration("db-max-idle-time", c.db.maxIdleTime),
+		slog.Duration("db-timeout", c.db.timeout),
 
 		slog.String("version", version),
 	)
@@ -67,7 +70,7 @@ func main() {
 	app := &application{
 		config:     cfg,
 		logger:     logger,
-		modelStore: data.NewModelStore(db),
+		modelStore: data.NewModelStore(db, cfg.db.timeout),
 		jwtMaker:   auth.NewJWTMaker(cfg.jwtMaker.secretKey, cfg.jwtMaker.issuer),
 	}
 
@@ -87,6 +90,7 @@ func parseConfig() config {
 	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("DB_DSN"), "PostgreSQL DSN")
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
 	flag.DurationVar(&cfg.db.maxIdleTime, "db-max-idle-time", 15*time.Minute, "PostgreSQL max connection idle time")
+	flag.DurationVar(&cfg.db.timeout, "db-timeout", 5*time.Second, "PostgreSQL operation timeout")
 
 	flag.StringVar(&cfg.jwtMaker.secretKey, "jwt-secret", os.Getenv("JWT_SECRET"), "JWT secret key")
 	flag.StringVar(&cfg.jwtMaker.issuer, "jwt-issuer", os.Getenv("JWT_ISSUER"), "JWT issuer")
@@ -117,7 +121,7 @@ func openDB(cfg config) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.db.timeout)
 	defer cancel()
 
 	err = db.Ping(ctx)

@@ -2,6 +2,7 @@ package data
 
 import (
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -16,10 +17,10 @@ type ModelStore struct {
 	Articles ArticleStoreInterface
 }
 
-func NewModelStore(db *pgxpool.Pool) ModelStore {
+func NewModelStore(db *pgxpool.Pool, timeout time.Duration) ModelStore {
 	return ModelStore{
-		Users:    &UserStore{db: db},
-		Articles: &ArticleStore{db: db},
+		Users:    &UserStore{db: db, timeout: timeout},
+		Articles: &ArticleStore{db: db, timeout: timeout},
 	}
 }
 
