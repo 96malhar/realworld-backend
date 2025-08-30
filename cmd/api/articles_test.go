@@ -406,7 +406,106 @@ func TestFavoriteArticleHandler_NegativeCases(t *testing.T) {
 	testHandler(t, ts, testcases...)
 }
 
-func TestFavoriteArticleHandler_Concurrency(t *testing.T) {
+func TestUnfavoriteArticleHandler_PositiveCases(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t)
+
+	// Setup users
+	registerUser(t, ts, "alice", "alice@example.com", "password123")
+	registerUser(t, ts, "bob", "bob@example.com", "password123")
+	aliceToken := loginUser(t, ts, "alice@example.com", "password123")
+	bobToken := loginUser(t, ts, "bob@example.com", "password123")
+
+	// Create an article by Alice
+	location := createArticle(t, ts, aliceToken, "Test Article", "Test description", "Test body content", []string{"test", "golang"})
+	slug := strings.TrimPrefix(location, "/articles/")
+
+	// Bob likes the article first
+	headers := map[string]string{"Authorization": "Token " + bobToken}
+	res, err := ts.executeRequest(http.MethodPost, "/articles/"+slug+"/favorite", "", headers)
+	require.NoError(t, err)
+	defer res.Body.Close() // nolint: errcheck
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var response getArticleResponse
+	readJsonResponse(t, res.Body, &response)
+	assert.Equal(t, 1, response.Article.FavoritesCount)
+	assert.True(t, response.Article.Favorited)
+
+	// Now Bob unfavorites the article
+	res, err = ts.executeRequest(http.MethodDelete, "/articles/"+slug+"/favorite", "", headers)
+	require.NoError(t, err)
+	defer res.Body.Close() // nolint: errcheck
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	readJsonResponse(t, res.Body, &response)
+	assert.Equal(t, slug, response.Article.Slug)
+	assert.Equal(t, "Test Article", response.Article.Title)
+	assert.Equal(t, 0, response.Article.FavoritesCount)
+	assert.False(t, response.Article.Favorited)
+	assert.Equal(t, "alice", response.Article.Author.Username)
+
+	// Bob tries to unfavorite again - idempotent operation
+	res, err = ts.executeRequest(http.MethodDelete, "/articles/"+slug+"/favorite", "", headers)
+	require.NoError(t, err)
+	defer res.Body.Close() // nolint: errcheck
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	readJsonResponse(t, res.Body, &response)
+	assert.Equal(t, 0, response.Article.FavoritesCount)
+	assert.False(t, response.Article.Favorited)
+}
+
+func TestUnfavoriteArticleHandler_NegativeCases(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t)
+
+	// Setup users
+	registerUser(t, ts, "alice", "alice@example.com", "password123")
+	registerUser(t, ts, "bob", "bob@example.com", "password123")
+	aliceToken := loginUser(t, ts, "alice@example.com", "password123")
+	bobToken := loginUser(t, ts, "bob@example.com", "password123")
+
+	// Create an article by Alice
+	location := createArticle(t, ts, aliceToken, "Test Article", "Test description", "Test body content", []string{"test", "golang"})
+	slug := strings.TrimPrefix(location, "/articles/")
+
+	testcases := []handlerTestcase{
+		{
+			name:                   "Unfavorite non-existing article",
+			requestMethodType:      http.MethodDelete,
+			requestUrlPath:         "/articles/non-existing-article/favorite",
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusNotFound,
+		},
+		{
+			name:                   "Unauthorized user cannot unfavorite article",
+			requestMethodType:      http.MethodDelete,
+			requestUrlPath:         "/articles/" + slug + "/favorite",
+			wantResponseStatusCode: http.StatusUnauthorized,
+		},
+		{
+			name:                   "Invalid token cannot unfavorite article",
+			requestMethodType:      http.MethodDelete,
+			requestUrlPath:         "/articles/" + slug + "/favorite",
+			requestHeader:          map[string]string{"Authorization": "Token invalid-token"},
+			wantResponseStatusCode: http.StatusUnauthorized,
+		},
+		{
+			name:                   "GET method not allowed",
+			requestMethodType:      http.MethodGet,
+			requestUrlPath:         "/articles/" + slug + "/favorite",
+			requestHeader:          map[string]string{"Authorization": "Token " + bobToken},
+			wantResponseStatusCode: http.StatusMethodNotAllowed,
+		},
+	}
+
+	testHandler(t, ts, testcases...)
+}
+
+func Test_Favorite_Unfavorite_ArticleHandler_Concurrency(t *testing.T) {
 	t.Parallel()
 
 	ts := newTestServer(t)
@@ -414,15 +513,14 @@ func TestFavoriteArticleHandler_Concurrency(t *testing.T) {
 	// Create an article by a user
 	registerUser(t, ts, "author", "author@example.com", "password123")
 	authorToken := loginUser(t, ts, "author@example.com", "password123")
-	location := createArticle(t, ts, authorToken, "Concurrent Test Article", "Test description", "Test body content", []string{"test"})
+	location := createArticle(t, ts, authorToken, "Concurrent Unfavorite Test Article", "Test description", "Test body content", []string{"test"})
 	slug := strings.TrimPrefix(location, "/articles/")
 
-	// Create multiple users concurrently who will favorite the same article
+	// Create multiple users concurrently
 	numUsers := 25
 	userTokens := make([]string, numUsers)
 	registrationErrs := make(chan error, numUsers)
 
-	// Register users concurrently
 	for i := 0; i < numUsers; i++ {
 		go func(userIndex int) {
 			defer func() {
@@ -431,67 +529,92 @@ func TestFavoriteArticleHandler_Concurrency(t *testing.T) {
 				}
 			}()
 
-			username := "user" + strconv.Itoa(userIndex+1)
+			username := "unfavorite_user" + strconv.Itoa(userIndex+1)
 			email := username + "@example.com"
-
-			// Register user
 			registerUser(t, ts, username, email, "password123")
-
-			// Login user and store token
 			token := loginUser(t, ts, email, "password123")
 			userTokens[userIndex] = token
-
 			registrationErrs <- nil
 		}(i)
 	}
 
-	// Wait for all user registrations to complete
 	for i := 0; i < numUsers; i++ {
 		err := <-registrationErrs
 		require.NoError(t, err)
 	}
 
-	// Have all users favorite the article concurrently
+	// All users favorite the article
 	favoriteErrs := make(chan error, numUsers)
-	for i := 0; i < numUsers; i++ {
+	for _, token := range userTokens {
 		go func(token string) {
 			defer func() {
 				if r := recover(); r != nil {
 					favoriteErrs <- r.(error)
 				}
 			}()
-
 			headers := map[string]string{"Authorization": "Token " + token}
 			resp, err := ts.executeRequest(http.MethodPost, "/articles/"+slug+"/favorite", "", headers)
 			if err != nil {
 				favoriteErrs <- err
 				return
 			}
-			defer resp.Body.Close() // nolint: errcheck
-
+			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
 				favoriteErrs <- assert.AnError
 				return
 			}
-
 			favoriteErrs <- nil
-		}(userTokens[i])
+		}(token)
 	}
 
-	// Wait for all favorite operations to complete
 	for i := 0; i < numUsers; i++ {
 		err := <-favoriteErrs
 		require.NoError(t, err)
 	}
 
-	// Verify the final favorites count is correct
+	// Verify the favorites count
 	resp, err := ts.executeRequest(http.MethodGet, "/articles/"+slug, "", nil)
 	require.NoError(t, err)
-	defer resp.Body.Close() // nolint: errcheck
-
+	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-
 	var response getArticleResponse
 	readJsonResponse(t, resp.Body, &response)
-	assert.Equal(t, numUsers, response.Article.FavoritesCount, "Favorites count should equal number of users who favorited")
+	assert.Equal(t, numUsers, response.Article.FavoritesCount)
+
+	// All users unfavorite the article concurrently
+	unfavoriteErrs := make(chan error, numUsers)
+	for _, token := range userTokens {
+		go func(token string) {
+			defer func() {
+				if r := recover(); r != nil {
+					unfavoriteErrs <- r.(error)
+				}
+			}()
+			headers := map[string]string{"Authorization": "Token " + token}
+			resp, err := ts.executeRequest(http.MethodDelete, "/articles/"+slug+"/favorite", "", headers)
+			if err != nil {
+				unfavoriteErrs <- err
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				unfavoriteErrs <- assert.AnError
+				return
+			}
+			unfavoriteErrs <- nil
+		}(token)
+	}
+
+	for i := 0; i < numUsers; i++ {
+		err := <-unfavoriteErrs
+		require.NoError(t, err)
+	}
+
+	// Verify the final favorites count is 0
+	resp, err = ts.executeRequest(http.MethodGet, "/articles/"+slug, "", nil)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	readJsonResponse(t, resp.Body, &response)
+	assert.Equal(t, 0, response.Article.FavoritesCount)
 }
