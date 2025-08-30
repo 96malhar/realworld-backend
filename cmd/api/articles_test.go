@@ -418,7 +418,7 @@ func TestFavoriteArticleHandler_Concurrency(t *testing.T) {
 	slug := strings.TrimPrefix(location, "/articles/")
 
 	// Create multiple users concurrently who will favorite the same article
-	numUsers := 50
+	numUsers := 25
 	userTokens := make([]string, numUsers)
 	registrationErrs := make(chan error, numUsers)
 

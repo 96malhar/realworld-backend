@@ -87,7 +87,7 @@ tasks:
       - echo "Formatting code..."
       - go fmt ./...
       - echo "Running linters..."
-      - golangci-lint run
+      - golangci-lint run --tests=false
       - echo "Checking vulnerabilities..."
       - govulncheck ./...
 

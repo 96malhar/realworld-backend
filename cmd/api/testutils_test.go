@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/96malhar/realworld-backend/internal/auth"
-	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -33,9 +32,63 @@ type testServer struct {
 }
 
 func newTestServer(t *testing.T) *testServer {
-	testDb := newTestDB(t)
-	app := newTestApplication(testDb)
+	t.Helper()
 
+	// connect to the root db to create a new test db
+	// generate a random db name of length 8
+	dbName := "testdb_" + uuid.New().String()[:8]
+	dsn := fmt.Sprintf("postgres://postgres:postgres@localhost:5432/%s?sslmode=disable", dbName)
+
+	// create the database
+	rootDB, err := pgxpool.New(context.Background(), "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
+	require.NoError(t, err)
+	_, err = rootDB.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s;", dbName))
+	require.NoError(t, err)
+	t.Logf("created test database %s", dbName)
+
+	// delete the database at the end of the test
+	t.Cleanup(func() {
+		rootDB.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE);", dbName))
+		t.Logf("dropped test database %s", dbName)
+		rootDB.Close()
+	})
+
+	// Run migrations on the test database using golang migrate
+	t.Log("running migrations on test database...")
+	db, err := pgxpool.New(context.Background(), dsn)
+	require.NoError(t, err)
+	sqlDB := stdlib.OpenDBFromPool(db)
+	driver, err := pgx.WithInstance(sqlDB, &pgx.Config{})
+	require.NoError(t, err)
+	m, err := migrate.NewWithDatabaseInstance("file://../../migrations", dbName, driver)
+	require.NoError(t, err)
+	err = m.Up()
+	require.NoError(t, err)
+	t.Log("migrations applied successfully")
+
+	// close all connections
+	m.Close()
+	sqlDB.Close()
+	db.Close()
+
+	cfg := appConfig{
+		env: "development",
+		db: dbConfig{
+			dsn:          dsn,
+			maxIdleTime:  15 * time.Minute,
+			maxOpenConns: 25,
+			timeout:      30 * time.Second,
+		},
+		jwtMaker: jwtMakerConfig{
+			secretKey: "test-secret-key",
+			issuer:    "conduit_tests",
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	app := newApplication(cfg, logger)
+
+	t.Logf("setting up test server...")
 	return &testServer{
 		router: app.routes(),
 		app:    app,
@@ -58,72 +111,6 @@ func (ts *testServer) executeRequest(method, urlPath, body string, requestHeader
 	rr := httptest.NewRecorder()
 	ts.router.ServeHTTP(rr, req)
 	return rr.Result(), nil
-}
-
-func newTestDB(t *testing.T) *pgxpool.Pool {
-	randomSuffix := strings.Split(uuid.New().String(), "-")[0]
-	testDbName := fmt.Sprintf("testdb_%s", randomSuffix)
-	rootDsn := "host=localhost port=5432 user=postgres password=postgres sslmode=disable"
-	testDbDsn := fmt.Sprintf("%s dbname=%s", rootDsn, testDbName)
-
-	rootDb := getDbConn(t, rootDsn)
-	_, err := rootDb.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE %s", testDbName))
-	require.NoErrorf(t, err, "Failed to create database %s", testDbName)
-
-	testDb := getDbConn(t, testDbDsn)
-	t.Logf("Connected to database %s", testDbName)
-
-	runMigrations(t, testDb, testDbName)
-
-	t.Cleanup(func() {
-		testDb.Close()
-		_, err := rootDb.Exec(context.Background(), fmt.Sprintf("DROP DATABASE %s", testDbName))
-		require.NoErrorf(t, err, "Failed to drop database %s", testDbName)
-		t.Logf("Dropped database %s", testDbName)
-		rootDb.Close()
-	})
-
-	return testDb
-}
-
-func getDbConn(t *testing.T, dsn string) *pgxpool.Pool {
-	db, _ := pgxpool.New(context.Background(), dsn)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	err := db.Ping(ctx)
-	require.NoErrorf(t, err, "Failed to connect to postgres with DSN = %s", dsn)
-
-	return db
-}
-
-func newTestApplication(db *pgxpool.Pool) *application {
-	return &application{
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		config: config{
-			env: "development",
-		},
-		modelStore: data.NewModelStore(db, 5*time.Second),
-		jwtMaker:   auth.NewJWTMaker("test-secret-key", "conduit-tests"),
-	}
-}
-
-func runMigrations(t *testing.T, pool *pgxpool.Pool, dbName string) {
-	t.Log("applying database migrations...")
-	db := stdlib.OpenDBFromPool(pool)
-	migrationDriver, err := pgx.WithInstance(db, &pgx.Config{})
-	require.NoError(t, err)
-
-	migrator, err := migrate.NewWithDatabaseInstance("file://../../migrations", dbName, migrationDriver)
-	require.NoError(t, err)
-
-	err = migrator.Up()
-	require.NoError(t, err)
-
-	t.Log("database migrations applied")
-	_, err = migrator.Close()
-	require.NoError(t, err)
-
-	require.NoError(t, db.Close())
 }
 
 func readJsonResponse(t *testing.T, body io.Reader, dst any) {

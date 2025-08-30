@@ -1,15 +1,18 @@
 package main
 
 import (
-	"github.com/go-chi/chi/v5"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRecoverPanic(t *testing.T) {
-	app := newTestApplication(nil)
+	app := newTestServer(t).app
+
+	// Create a new router and register a test handler that panics
 	router := chi.NewRouter()
 	router.Use(app.recoverPanic)
 
