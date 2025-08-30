@@ -188,11 +188,12 @@ func (app *application) updateArticleHandler(w http.ResponseWriter, r *http.Requ
 
 	err = app.modelStore.Articles.Update(article)
 	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
 			app.notFoundResponse(w, r)
-			return
+		default:
+			app.serverErrorResponse(w, r, err)
 		}
-		app.serverErrorResponse(w, r, err)
 		return
 	}
 
