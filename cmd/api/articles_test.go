@@ -618,3 +618,147 @@ func Test_Favorite_Unfavorite_ArticleHandler_Concurrency(t *testing.T) {
 	readJsonResponse(t, resp.Body, &response)
 	assert.Equal(t, 0, response.Article.FavoritesCount)
 }
+
+func TestDeleteArticleHandler(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t)
+
+	// 1. Create 2 users bob and alice
+	registerUser(t, ts, "alice", "alice@example.com", "password123")
+	registerUser(t, ts, "bob", "bob@example.com", "password123")
+	aliceToken := loginUser(t, ts, "alice@example.com", "password123")
+	bobToken := loginUser(t, ts, "bob@example.com", "password123")
+
+	// 2. Create and article writte by bob
+	location := createArticle(t, ts, bobToken, "Bob's Article", "Bob's description", "Bob's body content", []string{"bob"})
+	slug := strings.TrimPrefix(location, "/articles/")
+
+	// 3. Alice tries to delete the article and is not successful
+	headers := map[string]string{"Authorization": "Token " + aliceToken}
+	res, err := ts.executeRequest(http.MethodDelete, "/articles/"+slug, "", headers)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+
+	// 4. Bob tries to delete it and is successful
+	headers = map[string]string{"Authorization": "Token " + bobToken}
+	res, err = ts.executeRequest(http.MethodDelete, "/articles/"+slug, "", headers)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusNoContent, res.StatusCode)
+
+	// Verify the article is actually deleted
+	getRes, err := ts.executeRequest(http.MethodGet, "/articles/"+slug, "", nil)
+	require.NoError(t, err)
+	defer getRes.Body.Close()
+	assert.Equal(t, http.StatusNotFound, getRes.StatusCode)
+
+}
+
+func TestUpdateArticleHandler(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t)
+
+	// Setup Alice
+	registerUser(t, ts, "alice", "alice@example.com", "password123")
+	aliceToken := loginUser(t, ts, "alice@example.com", "password123")
+
+	// Setup Bob
+	registerUser(t, ts, "bob", "bob@example.com", "password123")
+	bobToken := loginUser(t, ts, "bob@example.com", "password123")
+
+	// Create 2 articles by alice
+	location1 := createArticle(t, ts, aliceToken, "Original Title", "Original description", "Original body content", []string{"original"})
+	slug1 := strings.TrimPrefix(location1, "/articles/")
+	location2 := createArticle(t, ts, aliceToken, "Second Article", "Second description", "Second body content", []string{"second"})
+	slug2 := strings.TrimPrefix(location2, "/articles/")
+
+	testcases := []handlerTestcase{
+		{
+			name:              "Update article successfully",
+			requestMethodType: http.MethodPut,
+			requestUrlPath:    "/articles/" + slug1,
+			requestHeader:     map[string]string{"Authorization": "Token " + aliceToken},
+			requestBody: `{
+				"article": {
+					"title": "Updated Title",
+					"description": "Updated description",
+					"body": "Updated body content"
+				}
+			}`,
+			wantResponseStatusCode: http.StatusOK,
+			additionalChecks: func(t *testing.T, resp *http.Response) {
+				var gotResponse getArticleResponse
+				readJsonResponse(t, resp.Body, &gotResponse)
+				assert.Equal(t, "Updated Title", gotResponse.Article.Title)
+				assert.Equal(t, "Updated description", gotResponse.Article.Description)
+				assert.Equal(t, "Updated body content", gotResponse.Article.Body)
+				assert.ElementsMatch(t, []string{"original"}, gotResponse.Article.TagList)
+				assert.True(t, gotResponse.Article.UpdatedAt.After(gotResponse.Article.CreatedAt))
+				assert.Equal(t, "alice", gotResponse.Article.Author.Username)
+			},
+		},
+		{
+			name:              "Update article with empty title",
+			requestMethodType: http.MethodPut,
+			requestUrlPath:    "/articles/" + slug2,
+			requestHeader:     map[string]string{"Authorization": "Token " + aliceToken},
+			requestBody: `{
+				"article": {
+					"title": "",
+					"description": "Updated description",
+					"body": "Updated body content"
+				}
+			}`,
+			wantResponseStatusCode: http.StatusUnprocessableEntity,
+			wantResponse: errorResponse{
+				Errors: []string{"Title must not be empty or whitespace only"},
+			},
+		},
+		{
+			name:              "Unauthorized user cannot update article",
+			requestMethodType: http.MethodPut,
+			requestUrlPath:    "/articles/" + slug2,
+			requestBody: `{
+				"article": {
+					"title": "Updated Title",
+					"description": "Updated description",
+					"body": "Updated body content"
+				}
+			}`,
+			wantResponseStatusCode: http.StatusUnauthorized,
+		},
+		{
+			name:              "Bob cannot update Alice's article",
+			requestMethodType: http.MethodPut,
+			requestUrlPath:    "/articles/" + slug2,
+			requestHeader:     map[string]string{"Authorization": "Token " + bobToken},
+			requestBody: `{
+				"article": {
+					"title": "Updated Title",
+					"description": "Updated description",
+					"body": "Updated body content"
+				}
+			}`,
+			wantResponseStatusCode: http.StatusForbidden,
+		},
+		{
+			name:              "Update non-existing article",
+			requestMethodType: http.MethodPut,
+			requestUrlPath:    "/articles/non-existing-article",
+			requestHeader:     map[string]string{"Authorization": "Token " + aliceToken},
+			requestBody: `{
+				"article": {
+					"title": "Updated Title",
+					"description": "Updated description",
+					"body": "Updated body content"
+				}
+			}`,
+			wantResponseStatusCode: http.StatusNotFound,
+		},
+	}
+
+	testHandler(t, ts, testcases...)
+}

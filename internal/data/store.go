@@ -52,4 +52,8 @@ type ArticleStoreInterface interface {
 	FavoriteBySlug(slug string, userID int64) (*Article, error)
 	// UnfavoriteBySlug unfavorites the article with the given slug for the user and returns the updated article.
 	UnfavoriteBySlug(slug string, userID int64) (*Article, error)
+	// DeleteBySlug deletes the article with the given slug.
+	DeleteBySlug(slug string, userID int64) error
+	// Update an existing article record.
+	Update(article *Article) error
 }

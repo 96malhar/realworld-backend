@@ -255,3 +255,54 @@ func (s *ArticleStore) UnfavoriteBySlug(slug string, userID int64) (*Article, er
 	// Return the fresh article including favorited status
 	return s.GetBySlug(slug, &User{ID: userID})
 }
+
+func (s *ArticleStore) DeleteBySlug(slug string, authorID int64) error {
+	query := `
+		DELETE FROM articles
+		WHERE slug = $1 AND author_id = $2
+	`
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	result, err := s.db.Exec(ctx, query, slug, authorID)
+	if err != nil {
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrRecordNotFound
+	}
+
+	return nil
+}
+
+func (s *ArticleStore) Update(article *Article) error {
+	query := `
+		UPDATE articles
+		SET title = $1, description = $2, body = $3, slug = $4, updated_at = (NOW() AT TIME ZONE 'UTC')
+		WHERE id = $5
+		RETURNING updated_at
+	`
+
+	args := []any{
+		article.Title,
+		article.Description,
+		article.Body,
+		article.Slug,
+		article.ID,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	err := s.db.QueryRow(ctx, query, args...).Scan(&article.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrRecordNotFound
+		}
+		return err
+	}
+
+	return nil
+}
