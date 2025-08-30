@@ -210,3 +210,48 @@ func (s *ArticleStore) FavoriteBySlug(slug string, userID int64) (*Article, erro
 	// Return the fresh article including favorited status
 	return s.GetBySlug(slug, &User{ID: userID})
 }
+
+// UnfavoriteBySlug unfavorites an article for the given user and returns the updated article.
+func (s *ArticleStore) UnfavoriteBySlug(slug string, userID int64) (*Article, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Lookup the article id first
+	var articleID int64
+	q1 := `SELECT id FROM articles WHERE slug = $1`
+	err = tx.QueryRow(ctx, q1, slug).Scan(&articleID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, err
+	}
+
+	// Delete the favorite record.
+	q2 := `DELETE FROM favorites WHERE user_id = $1 AND article_id = $2`
+	tag, err := tx.Exec(ctx, q2, userID, articleID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only decrement the count if a favorite was actually deleted.
+	if tag.RowsAffected() == 1 {
+		q3 := `UPDATE articles SET favorites_count = favorites_count - 1 WHERE id = $1 AND favorites_count > 0`
+		if _, err := tx.Exec(ctx, q3, articleID); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	// Return the fresh article including favorited status
+	return s.GetBySlug(slug, &User{ID: userID})
+}

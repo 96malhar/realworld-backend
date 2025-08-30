@@ -95,3 +95,23 @@ func (app *application) favoriteArticleHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 }
+
+func (app *application) unfavoriteArticleHandler(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	user := app.contextGetUser(r)
+
+	article, err := app.modelStore.Articles.UnfavoriteBySlug(slug, user.ID)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			app.notFoundResponse(w, r)
+			return
+		}
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	if err := app.writeJSON(w, http.StatusOK, envelope{"article": article}, nil); err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+}

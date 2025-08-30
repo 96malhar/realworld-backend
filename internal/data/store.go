@@ -50,4 +50,6 @@ type ArticleStoreInterface interface {
 	GetBySlug(slug string, currentUser *User) (*Article, error)
 	// FavoriteBySlug favorites the article with the given slug for the user and returns the updated article.
 	FavoriteBySlug(slug string, userID int64) (*Article, error)
+	// UnfavoriteBySlug unfavorites the article with the given slug for the user and returns the updated article.
+	UnfavoriteBySlug(slug string, userID int64) (*Article, error)
 }
