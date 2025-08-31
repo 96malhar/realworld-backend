@@ -698,6 +698,8 @@ func TestUpdateArticleHandler(t *testing.T) {
 				assert.ElementsMatch(t, []string{"original"}, gotResponse.Article.TagList)
 				assert.True(t, gotResponse.Article.UpdatedAt.After(gotResponse.Article.CreatedAt))
 				assert.Equal(t, "alice", gotResponse.Article.Author.Username)
+				locationHeader := resp.Header.Get("Location")
+				assert.Contains(t, locationHeader, "/articles/updated-title")
 			},
 		},
 		{

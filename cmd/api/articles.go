@@ -197,7 +197,10 @@ func (app *application) updateArticleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	err = app.writeJSON(w, http.StatusOK, envelope{"article": article}, nil)
+	// set location header to point to the new article
+	headers := make(http.Header)
+	headers.Set("Location", "/articles/"+article.Slug)
+	err = app.writeJSON(w, http.StatusOK, envelope{"article": article}, headers)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 	}
