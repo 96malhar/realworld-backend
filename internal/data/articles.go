@@ -26,6 +26,7 @@ type Article struct {
 	Favorited      bool      `json:"favorited"`
 	AuthorID       int64     `json:"-"`
 	Author         Profile   `json:"author"`
+	Version        int       `json:"-"`
 }
 
 func ValidateArticle(v *validator.Validator, article *Article) {
@@ -96,6 +97,12 @@ func (s *ArticleStore) Insert(article *Article) error {
 		return err
 	}
 
+	// Insert tags into tags table using bulk insert
+	if len(article.TagList) > 0 {
+		if err = s.InsertTags(article.TagList...); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -103,7 +110,7 @@ func (s *ArticleStore) Insert(article *Article) error {
 func (s *ArticleStore) GetBySlug(slug string, currentUser *User) (*Article, error) {
 	query := `
 		SELECT a.id, a.slug, a.title, a.description, a.body, a.tag_list, a.created_at, a.updated_at, 
-		       a.favorites_count, u.id, u.username, u.bio, u.image
+		       a.favorites_count, a.version, u.id, u.username, u.bio, u.image
 		FROM articles a
 		JOIN users u ON a.author_id = u.id
 		WHERE a.slug = $1
@@ -125,6 +132,7 @@ func (s *ArticleStore) GetBySlug(slug string, currentUser *User) (*Article, erro
 		&article.CreatedAt,
 		&article.UpdatedAt,
 		&article.FavoritesCount,
+		&article.Version,
 		&article.AuthorID,
 		&author.Username,
 		&author.Bio,
@@ -280,9 +288,9 @@ func (s *ArticleStore) DeleteBySlug(slug string, authorID int64) error {
 func (s *ArticleStore) Update(article *Article) error {
 	query := `
 		UPDATE articles
-		SET title = $1, description = $2, body = $3, slug = $4, updated_at = (NOW() AT TIME ZONE 'UTC')
-		WHERE id = $5
-		RETURNING updated_at
+		SET title = $1, description = $2, body = $3, slug = $4, updated_at = (NOW() AT TIME ZONE 'UTC'), version = version + 1
+		WHERE id = $5 AND version = $6
+		RETURNING updated_at, version
 	`
 
 	args := []any{
@@ -291,16 +299,38 @@ func (s *ArticleStore) Update(article *Article) error {
 		article.Body,
 		article.Slug,
 		article.ID,
+		article.Version,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
-	err := s.db.QueryRow(ctx, query, args...).Scan(&article.UpdatedAt)
+	err := s.db.QueryRow(ctx, query, args...).Scan(&article.UpdatedAt, &article.Version)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrRecordNotFound
+			return ErrEditConflict
 		}
+		return err
+	}
+
+	if len(article.TagList) > 0 {
+		if err = s.InsertTags(article.TagList...); err != nil {
+			return err
+		}
+
+	}
+
+	return nil
+}
+
+func (s *ArticleStore) InsertTags(tags ...string) error {
+	query := `INSERT INTO tags (tag) SELECT UNNEST($1::text[]) ON CONFLICT (tag) DO NOTHING`
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	_, err := s.db.Exec(ctx, query, tags)
+	if err != nil {
 		return err
 	}
 

@@ -15,12 +15,14 @@ var (
 type ModelStore struct {
 	Users    UserStoreInterface
 	Articles ArticleStoreInterface
+	Tags     TagStoreInterface
 }
 
 func NewModelStore(db *pgxpool.Pool, timeout time.Duration) ModelStore {
 	return ModelStore{
 		Users:    &UserStore{db: db, timeout: timeout},
 		Articles: &ArticleStore{db: db, timeout: timeout},
+		Tags:     &TagStore{db: db, timeout: timeout},
 	}
 }
 
@@ -56,4 +58,9 @@ type ArticleStoreInterface interface {
 	DeleteBySlug(slug string, userID int64) error
 	// Update an existing article record.
 	Update(article *Article) error
+}
+
+type TagStoreInterface interface {
+	// GetAll retrieves all tags from the tags table.
+	GetAll() ([]string, error)
 }

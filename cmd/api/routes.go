@@ -41,5 +41,7 @@ func (app *application) routes() *chi.Mux {
 		r.With(app.requireAuthenticatedUser).Delete("/{slug}/favorite", app.unfavoriteArticleHandler)
 	})
 
+	r.Get("/tags", app.getTagsHandler)
+
 	return r
 }
