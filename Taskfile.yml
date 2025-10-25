@@ -58,10 +58,17 @@ tasks:
       - go build -ldflags '-s' -o ./bin/api ./cmd/api
 
   server:start:
-    desc: Builds and starts the API server
+    desc: Starts the API server (includes postgres, database setup, and migrations)
     cmds:
-      - task: server:build
-      - ./bin/api {{.CLI_ARGS}}
+      # Start postgres if not already running
+      - docker compose up -d db
+      - sleep 2
+      # Create database if it doesn't exist (ignoring errors if it already exists)
+      - PGPASSWORD=postgres psql -U postgres -h localhost -c "CREATE DATABASE {{.DB_NAME}};" || true
+      # Run migrations
+      - migrate -path ./migrations -database ${DB_DSN} up
+      # Start server
+      - go run ./cmd/api {{.CLI_ARGS}}
 
   update:dependencies:
     desc: Update dependencies
