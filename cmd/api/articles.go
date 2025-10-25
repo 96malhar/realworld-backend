@@ -9,6 +9,52 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+func (app *application) listArticlesHandler(w http.ResponseWriter, r *http.Request) {
+	// Read pagination parameters using reusable helper
+	// Default limit is 20, max limit is 100
+	pagination := app.readPagination(r, 20, 100)
+
+	// Read query parameters
+	qs := r.URL.Query()
+
+	// Read filters
+	filters := data.ArticleFilters{
+		Tag:       qs.Get("tag"),
+		Author:    qs.Get("author"),
+		Favorited: qs.Get("favorited"),
+		Limit:     pagination.Limit,
+		Offset:    pagination.Offset,
+	}
+
+	// Validate filters
+	v := validator.New()
+	filters.Validate(v)
+	if !v.Valid() {
+		app.failedValidationResponse(w, r, v.Errors)
+		return
+	}
+
+	// Get current user (may be anonymous)
+	currentUser := app.contextGetUser(r)
+
+	// List articles with filters
+	articles, totalCount, err := app.modelStore.Articles.List(filters, currentUser)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	// Write response
+	err = app.writeJSON(w, http.StatusOK, envelope{
+		"articles":      articles,
+		"articlesCount": totalCount,
+	}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+}
+
 func (app *application) createArticleHandler(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Article struct {

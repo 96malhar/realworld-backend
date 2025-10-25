@@ -160,12 +160,6 @@ func TestCreateArticleHandler(t *testing.T) {
 			wantResponseStatusCode: http.StatusUnauthorized,
 		},
 		{
-			name:                   "Get method not allowed",
-			requestMethodType:      http.MethodGet,
-			requestUrlPath:         requestUrlPath,
-			wantResponseStatusCode: http.StatusMethodNotAllowed,
-		},
-		{
 			name:              "Duplicate tags",
 			requestMethodType: http.MethodPost,
 			requestUrlPath:    requestUrlPath,
@@ -764,6 +758,567 @@ func TestUpdateArticleHandler(t *testing.T) {
 	}
 
 	testHandler(t, ts, testcases...)
+}
+
+func TestListArticlesHandler(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t)
+
+	// Create 7 test users
+	registerUser(t, ts, "alice", "alice@example.com", "password123")
+	registerUser(t, ts, "bob", "bob@example.com", "password123")
+	registerUser(t, ts, "charlie", "charlie@example.com", "password123")
+	registerUser(t, ts, "david", "david@example.com", "password123")
+	registerUser(t, ts, "emily", "emily@example.com", "password123")
+	registerUser(t, ts, "frank", "frank@example.com", "password123")
+	registerUser(t, ts, "grace", "grace@example.com", "password123")
+
+	aliceToken := loginUser(t, ts, "alice@example.com", "password123")
+	bobToken := loginUser(t, ts, "bob@example.com", "password123")
+	charlieToken := loginUser(t, ts, "charlie@example.com", "password123")
+	davidToken := loginUser(t, ts, "david@example.com", "password123")
+	emilyToken := loginUser(t, ts, "emily@example.com", "password123")
+	frankToken := loginUser(t, ts, "frank@example.com", "password123")
+	graceToken := loginUser(t, ts, "grace@example.com", "password123")
+
+	// Each user creates multiple articles with overlapping tags
+	// Alice creates 3 articles (golang, tutorial, advanced)
+	article1 := createArticle(t, ts, aliceToken, "Golang Basics", "Learn Go", "Content about Go", []string{"golang", "tutorial", "backend"})
+	article2 := createArticle(t, ts, aliceToken, "Advanced Golang", "Advanced Go", "Advanced Go content", []string{"golang", "advanced", "backend"})
+	_ = createArticle(t, ts, aliceToken, "Go Concurrency", "Master goroutines", "Deep dive into concurrency", []string{"golang", "concurrency", "advanced"})
+
+	// Bob creates 2 articles (javascript, tutorial, web)
+	_ = createArticle(t, ts, bobToken, "React Guide", "Learn React", "Content about React", []string{"react", "javascript", "web", "tutorial"})
+	_ = createArticle(t, ts, bobToken, "React Hooks", "Master Hooks", "Understanding React Hooks", []string{"react", "hooks", "web", "advanced"})
+
+	// Charlie creates 3 articles (python, web, tutorial, frontend)
+	_ = createArticle(t, ts, charlieToken, "Python Tutorial", "Learn Python", "Python content", []string{"python", "tutorial", "backend"})
+	_ = createArticle(t, ts, charlieToken, "Python Django", "Web with Django", "Building web apps", []string{"python", "django", "web", "backend"})
+	_ = createArticle(t, ts, charlieToken, "Frontend Fundamentals", "HTML, CSS, JS", "Building beautiful UIs", []string{"frontend", "javascript", "web"})
+
+	// David creates 3 articles (rust, tutorial, advanced, web)
+	_ = createArticle(t, ts, davidToken, "Rust Basics", "Introduction to Rust", "Getting started with Rust", []string{"rust", "tutorial", "backend"})
+	_ = createArticle(t, ts, davidToken, "Rust Ownership", "Understanding Ownership", "Memory safety in Rust", []string{"rust", "advanced", "backend"})
+	_ = createArticle(t, ts, davidToken, "Rust WebAssembly", "Rust meets WASM", "Web development with Rust", []string{"rust", "wasm", "web"})
+
+	// Emily creates 2 articles (javascript, advanced, web)
+	_ = createArticle(t, ts, emilyToken, "TypeScript Guide", "Type-safe JavaScript", "Introduction to TypeScript", []string{"typescript", "javascript", "web", "tutorial"})
+	_ = createArticle(t, ts, emilyToken, "Advanced TypeScript", "Generics and Types", "Advanced type system", []string{"typescript", "advanced", "web"})
+
+	// Frank creates 2 articles (devops, tutorial, advanced)
+	_ = createArticle(t, ts, frankToken, "Docker Basics", "Containerization", "Getting started with Docker", []string{"docker", "devops", "tutorial"})
+	_ = createArticle(t, ts, frankToken, "Kubernetes Guide", "Orchestration", "Container orchestration", []string{"kubernetes", "devops", "advanced"})
+
+	// Grace creates 2 articles (python, advanced, data science)
+	_ = createArticle(t, ts, graceToken, "Data Science 101", "Introduction to DS", "Getting started with data", []string{"datascience", "python", "tutorial"})
+	_ = createArticle(t, ts, graceToken, "Machine Learning", "ML Algorithms", "Understanding ML", []string{"datascience", "ml", "advanced"})
+
+	// Setup favorites: Bob favorites Alice's golang articles
+	slug1 := strings.TrimPrefix(article1, "/articles/")
+	slug2 := strings.TrimPrefix(article2, "/articles/")
+	favoriteArticleHelper(t, ts, bobToken, slug1)
+	favoriteArticleHelper(t, ts, bobToken, slug2)
+
+	// Setup complex follow relationships (multiple users following multiple people)
+	// Charlie follows Alice, Bob, and David
+	followUser(t, ts, charlieToken, "alice")
+	followUser(t, ts, charlieToken, "bob")
+	followUser(t, ts, charlieToken, "david")
+
+	// David follows Alice, Bob, and Emily
+	followUser(t, ts, davidToken, "alice")
+	followUser(t, ts, davidToken, "bob")
+	followUser(t, ts, davidToken, "emily")
+
+	// Emily follows Alice, Charlie, and Frank
+	followUser(t, ts, emilyToken, "alice")
+	followUser(t, ts, emilyToken, "charlie")
+	followUser(t, ts, emilyToken, "frank")
+
+	// Frank follows Bob, David, and Grace
+	followUser(t, ts, frankToken, "bob")
+	followUser(t, ts, frankToken, "david")
+	followUser(t, ts, frankToken, "grace")
+
+	// Grace follows Alice, Emily, and Frank
+	followUser(t, ts, graceToken, "alice")
+	followUser(t, ts, graceToken, "emily")
+	followUser(t, ts, graceToken, "frank")
+
+	// Bob follows Alice and Charlie
+	followUser(t, ts, bobToken, "alice")
+	followUser(t, ts, bobToken, "charlie")
+
+	// Alice follows Bob and David
+	followUser(t, ts, aliceToken, "bob")
+	followUser(t, ts, aliceToken, "david")
+
+	t.Run("List all articles", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 17, response.ArticlesCount, "Should have 17 total articles")
+		assert.Len(t, response.Articles, 17, "Should return 17 articles")
+
+		// Verify all articles have proper author info
+		for _, article := range response.Articles {
+			assert.NotEmpty(t, article.Author.Username, "Author username should be populated")
+		}
+
+		// Verify ordering (most recent first) - check first few
+		assert.Equal(t, "Machine Learning", response.Articles[0].Title)
+		assert.Equal(t, "Data Science 101", response.Articles[1].Title)
+		assert.Equal(t, "Kubernetes Guide", response.Articles[2].Title)
+	})
+
+	t.Run("Unauthenticated request returns all articles with following and favorited as false", func(t *testing.T) {
+		// Make request without Authorization header
+		res, err := ts.executeRequest(http.MethodGet, "/articles", "", nil)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 17, response.ArticlesCount, "Should have 17 total articles")
+		assert.Len(t, response.Articles, 17, "Should return 17 articles")
+
+		// Verify all articles have valid fields and following/favorited are false
+		for _, article := range response.Articles {
+			// Verify following and favorited are false for unauthenticated users
+			assert.False(t, article.Favorited, "Unauthenticated user should have favorited=false")
+			assert.False(t, article.Author.Following, "Unauthenticated user should have following=false")
+
+			// Verify all other fields have valid values
+			assert.NotEmpty(t, article.Slug, "Slug should not be empty")
+			assert.NotEmpty(t, article.Title, "Title should not be empty")
+			assert.NotEmpty(t, article.Description, "Description should not be empty")
+			assert.Empty(t, article.Body, "Body should be empty in list results")
+			assert.NotNil(t, article.TagList, "TagList should not be nil")
+			assert.NotZero(t, article.CreatedAt, "CreatedAt should not be zero")
+			assert.NotZero(t, article.UpdatedAt, "UpdatedAt should not be zero")
+			assert.True(t, article.FavoritesCount >= 0, "FavoritesCount should be non-negative")
+			assert.NotEmpty(t, article.Author.Username, "Author username should be populated")
+		}
+	})
+
+	t.Run("Following status reflects user relationships", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + charlieToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 17, response.ArticlesCount)
+		assert.Len(t, response.Articles, 17)
+
+		// Charlie follows Alice, Bob, and David
+		for _, article := range response.Articles {
+			switch article.Author.Username {
+			case "alice", "bob", "david":
+				assert.True(t, article.Author.Following, "Charlie follows %s", article.Author.Username)
+			case "charlie":
+				assert.False(t, article.Author.Following, "Charlie doesn't follow himself")
+			default:
+				assert.False(t, article.Author.Following, "Charlie doesn't follow %s", article.Author.Username)
+			}
+			assert.False(t, article.Favorited, "Charlie hasn't favorited any articles")
+		}
+	})
+
+	t.Run("Filter by tag", func(t *testing.T) {
+		testCases := []struct {
+			name          string
+			token         string
+			tag           string
+			expectedCount int
+		}{
+			{
+				name:          "specific language golang",
+				token:         aliceToken,
+				tag:           "golang",
+				expectedCount: 3,
+			},
+			{
+				name:          "overlapping tag tutorial",
+				token:         bobToken,
+				tag:           "tutorial",
+				expectedCount: 7,
+			},
+			{
+				name:          "advanced articles",
+				token:         charlieToken,
+				tag:           "advanced",
+				expectedCount: 7,
+			},
+			{
+				name:          "web development",
+				token:         davidToken,
+				tag:           "web",
+				expectedCount: 7,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				headers := map[string]string{"Authorization": "Token " + tc.token}
+				res, err := ts.executeRequest(http.MethodGet, "/articles?tag="+tc.tag, "", headers)
+				require.NoError(t, err)
+				defer res.Body.Close()
+
+				require.Equal(t, http.StatusOK, res.StatusCode)
+
+				var response struct {
+					Articles      []article `json:"articles"`
+					ArticlesCount int       `json:"articlesCount"`
+				}
+				readJsonResponse(t, res.Body, &response)
+
+				assert.Equal(t, tc.expectedCount, response.ArticlesCount)
+				assert.Len(t, response.Articles, tc.expectedCount)
+
+				// Verify all articles have the expected tag
+				for _, article := range response.Articles {
+					assert.Contains(t, article.TagList, tc.tag)
+				}
+			})
+		}
+	})
+
+	t.Run("Filter by author", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + bobToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles?author=alice", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 3, response.ArticlesCount, "Alice has 3 articles")
+		assert.Len(t, response.Articles, 3)
+
+		// Verify all articles are by Alice
+		for _, article := range response.Articles {
+			assert.Equal(t, "alice", article.Author.Username)
+		}
+	})
+
+	t.Run("Filter by favorited user", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + charlieToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles?favorited=bob", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 2, response.ArticlesCount, "Bob favorited 2 articles")
+		assert.Len(t, response.Articles, 2)
+
+		// Verify these are the articles Bob favorited (most recent first)
+		titles := []string{response.Articles[0].Title, response.Articles[1].Title}
+		assert.Contains(t, titles, "Golang Basics")
+		assert.Contains(t, titles, "Advanced Golang")
+
+		// All favorited articles should be by Alice
+		for _, article := range response.Articles {
+			assert.Equal(t, "alice", article.Author.Username)
+		}
+	})
+
+	t.Run("Favorited status reflects user favorites", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + bobToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 17, response.ArticlesCount)
+
+		// Check favorited status for each article
+		favoritedCount := 0
+		for _, article := range response.Articles {
+			if article.Title == "Golang Basics" || article.Title == "Advanced Golang" {
+				assert.True(t, article.Favorited, "%s should be favorited by Bob", article.Title)
+				favoritedCount++
+			} else {
+				assert.False(t, article.Favorited, "%s should not be favorited by Bob", article.Title)
+			}
+		}
+		assert.Equal(t, 2, favoritedCount, "Bob should have favorited exactly 2 articles")
+	})
+
+	t.Run("Following status for different users", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + davidToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 17, response.ArticlesCount)
+
+		// Check following status - David follows Alice, Bob, and Emily
+		for _, article := range response.Articles {
+			if article.Author.Username == "alice" || article.Author.Username == "bob" || article.Author.Username == "emily" {
+				assert.True(t, article.Author.Following, "David follows %s", article.Author.Username)
+			} else {
+				assert.False(t, article.Author.Following, "David doesn't follow %s", article.Author.Username)
+			}
+		}
+	})
+
+	t.Run("Current user doesn't follow themselves", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		// Alice follows Bob and David, but not herself
+		for _, article := range response.Articles {
+			if article.Author.Username == "alice" {
+				assert.False(t, article.Author.Following, "User should not follow themselves")
+			} else if article.Author.Username == "bob" || article.Author.Username == "david" {
+				assert.True(t, article.Author.Following, "Alice follows %s", article.Author.Username)
+			} else {
+				assert.False(t, article.Author.Following, "Alice doesn't follow %s", article.Author.Username)
+			}
+		}
+	})
+
+	t.Run("Combined filters", func(t *testing.T) {
+		testCases := []struct {
+			name          string
+			token         string
+			queryString   string
+			expectedCount int
+			checkAuthor   string
+			checkTag      string
+		}{
+			{
+				name:          "tag and author",
+				token:         bobToken,
+				queryString:   "/articles?tag=golang&author=alice",
+				expectedCount: 3,
+				checkAuthor:   "alice",
+				checkTag:      "golang",
+			},
+			{
+				name:          "overlapping tag and author",
+				token:         emilyToken,
+				queryString:   "/articles?tag=backend&author=charlie",
+				expectedCount: 2,
+				checkAuthor:   "charlie",
+				checkTag:      "backend",
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				headers := map[string]string{"Authorization": "Token " + tc.token}
+				res, err := ts.executeRequest(http.MethodGet, tc.queryString, "", headers)
+				require.NoError(t, err)
+				defer res.Body.Close()
+
+				require.Equal(t, http.StatusOK, res.StatusCode)
+
+				var response struct {
+					Articles      []article `json:"articles"`
+					ArticlesCount int       `json:"articlesCount"`
+				}
+				readJsonResponse(t, res.Body, &response)
+
+				assert.Equal(t, tc.expectedCount, response.ArticlesCount)
+				assert.Len(t, response.Articles, tc.expectedCount)
+
+				// Verify all match both filters
+				for _, article := range response.Articles {
+					assert.Equal(t, tc.checkAuthor, article.Author.Username)
+					assert.Contains(t, article.TagList, tc.checkTag)
+				}
+			})
+		}
+	})
+
+	t.Run("No results when filter matches nothing", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles?tag=nonexistent", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 0, response.ArticlesCount)
+		assert.Empty(t, response.Articles)
+	})
+
+	t.Run("Articles have all required fields", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles?limit=1", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []article `json:"articles"`
+			ArticlesCount int       `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+		require.Len(t, response.Articles, 1)
+
+		article := response.Articles[0]
+		assert.NotEmpty(t, article.Slug)
+		assert.NotEmpty(t, article.Title)
+		assert.NotEmpty(t, article.Description)
+		assert.Empty(t, article.Body, "Body should not be included in list results")
+		assert.NotNil(t, article.TagList)
+		assert.NotZero(t, article.CreatedAt)
+		assert.NotZero(t, article.UpdatedAt)
+		assert.True(t, article.FavoritesCount >= 0)
+		assert.NotEmpty(t, article.Author.Username)
+	})
+
+	t.Run("Filter validation errors", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+
+		testCases := []struct {
+			name          string
+			queryString   string
+			expectedError string
+		}{
+			{
+				name:          "tag with special characters",
+				queryString:   "/articles?tag=golang-test",
+				expectedError: "Tag must contain only alphanumeric characters",
+			},
+			{
+				name:          "tag too long",
+				queryString:   "/articles?tag=" + strings.Repeat("a", 51),
+				expectedError: "Tag must not be more than 50 characters",
+			},
+			{
+				name:          "author with special characters",
+				queryString:   "/articles?author=alice@test",
+				expectedError: "Author must contain only alphanumeric characters",
+			},
+			{
+				name:          "author too long",
+				queryString:   "/articles?author=" + strings.Repeat("a", 51),
+				expectedError: "Author must not be more than 50 characters",
+			},
+			{
+				name:          "favorited with special characters",
+				queryString:   "/articles?favorited=bob_user",
+				expectedError: "Favorited username must contain only alphanumeric characters",
+			},
+			{
+				name:          "favorited too long",
+				queryString:   "/articles?favorited=" + strings.Repeat("a", 51),
+				expectedError: "Favorited username must not be more than 50 characters",
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				res, err := ts.executeRequest(http.MethodGet, tc.queryString, "", headers)
+				require.NoError(t, err)
+				defer res.Body.Close()
+
+				require.Equal(t, http.StatusUnprocessableEntity, res.StatusCode)
+
+				var response errorResponse
+				readJsonResponse(t, res.Body, &response)
+				assert.Contains(t, response.Errors, tc.expectedError)
+			})
+		}
+	})
+
+	t.Run("Multiple validation errors", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+		longTag := strings.Repeat("a", 51)
+		res, err := ts.executeRequest(http.MethodGet, "/articles?tag="+longTag+"&author=test-user&favorited=user@test", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusUnprocessableEntity, res.StatusCode)
+
+		var response errorResponse
+		readJsonResponse(t, res.Body, &response)
+		assert.GreaterOrEqual(t, len(response.Errors), 3, "Should have multiple validation errors")
+		assert.Contains(t, response.Errors, "Tag must not be more than 50 characters")
+		assert.Contains(t, response.Errors, "Author must contain only alphanumeric characters")
+		assert.Contains(t, response.Errors, "Favorited username must contain only alphanumeric characters")
+	})
+
+	t.Run("Valid filters pass validation", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles?tag=golang&author=alice&limit=10&offset=0", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
 }
 
 func TestArticleStore_GetIDBySlug(t *testing.T) {

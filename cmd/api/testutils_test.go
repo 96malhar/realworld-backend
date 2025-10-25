@@ -177,3 +177,18 @@ func followUser(t *testing.T, ts *testServer, token, username string) {
 
 	require.Equal(t, http.StatusOK, res.StatusCode)
 }
+
+// favoriteArticleHelper is a test helper that favorites an article
+func favoriteArticleHelper(t *testing.T, ts *testServer, token, slug string) {
+	t.Helper()
+
+	headers := map[string]string{
+		"Authorization": "Token " + token,
+	}
+
+	res, err := ts.executeRequest(http.MethodPost, "/articles/"+slug+"/favorite", "", headers)
+	require.NoError(t, err)
+	defer res.Body.Close() //nolint: errcheck
+
+	require.Equal(t, http.StatusOK, res.StatusCode)
+}

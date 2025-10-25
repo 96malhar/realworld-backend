@@ -54,6 +54,8 @@ type ArticleStoreInterface interface {
 	GetIDBySlug(slug string) (int64, error)
 	// GetBySlug retrieves a specific record from the articles table by slug.
 	GetBySlug(slug string, currentUser *User) (*Article, error)
+	// List retrieves articles with optional filtering and pagination.
+	List(filters ArticleFilters, currentUser *User) ([]Article, int, error)
 	// FavoriteBySlug favorites the article with the given slug for the user and returns the updated article.
 	FavoriteBySlug(slug string, userID int64) (*Article, error)
 	// UnfavoriteBySlug unfavorites the article with the given slug for the user and returns the updated article.

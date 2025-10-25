@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/96malhar/realworld-backend/internal/validator"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -356,4 +357,194 @@ func (s *ArticleStore) InsertTags(tags ...string) error {
 	}
 
 	return nil
+}
+
+// ArticleFilters holds filtering and pagination parameters for listing articles
+type ArticleFilters struct {
+	Tag       string
+	Author    string
+	Favorited string
+	Limit     int
+	Offset    int
+}
+
+var alphanumericRX = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+
+// Validate checks that the ArticleFilters fields are valid.
+// Note: Pagination parameters (Limit and Offset) are validated and normalized
+// by the readPagination helper before reaching this method.
+func (f ArticleFilters) Validate(v *validator.Validator) {
+	// Validate tag length and characters if provided
+	if f.Tag != "" {
+		v.Check(len(f.Tag) <= 50, "Tag must not be more than 50 characters")
+		v.Check(len(f.Tag) >= 1, "Tag must not be empty")
+		v.Check(alphanumericRX.MatchString(f.Tag), "Tag must contain only alphanumeric characters")
+	}
+
+	// Validate author username length and characters if provided
+	if f.Author != "" {
+		v.Check(len(f.Author) <= 50, "Author must not be more than 50 characters")
+		v.Check(len(f.Author) >= 1, "Author must not be empty")
+		v.Check(alphanumericRX.MatchString(f.Author), "Author must contain only alphanumeric characters")
+	}
+
+	// Validate favorited username length and characters if provided
+	if f.Favorited != "" {
+		v.Check(len(f.Favorited) <= 50, "Favorited username must not be more than 50 characters")
+		v.Check(len(f.Favorited) >= 1, "Favorited username must not be empty")
+		v.Check(alphanumericRX.MatchString(f.Favorited), "Favorited username must contain only alphanumeric characters")
+	}
+}
+
+// List retrieves articles with optional filtering and pagination.
+// Returns articles ordered by most recent first (created_at DESC).
+// Uses JOINs to efficiently fetch favorited and following status in a single query.
+func (s *ArticleStore) List(filters ArticleFilters, currentUser *User) ([]Article, int, error) {
+	// Use -1 for anonymous users (will never match real user IDs, so JOINs return NULL/false)
+	userID := int64(-1)
+	if currentUser != nil && !currentUser.IsAnonymous() {
+		userID = currentUser.ID
+	}
+
+	// Build base query using Squirrel - always include favorited and following columns
+	// Note: body is excluded from list results for performance
+	qb := sq.Select(
+		"a.id", "a.slug", "a.title", "a.description", "a.tag_list",
+		"a.created_at", "a.updated_at", "a.author_id", "a.version", "a.favorites_count",
+		"u.username", "u.bio", "u.image",
+		"COALESCE(fav.user_id IS NOT NULL, false) AS favorited",
+		"COALESCE(fol.follower_id IS NOT NULL, false) AS following",
+	).
+		From("articles a").
+		Join("users u ON a.author_id = u.id").
+		LeftJoin("favorites fav ON a.id = fav.article_id AND fav.user_id = ?", userID).
+		LeftJoin("follows fol ON a.author_id = fol.followed_id AND fol.follower_id = ?", userID).
+		PlaceholderFormat(sq.Dollar)
+
+	// Add WHERE conditions based on filters
+	if filters.Tag != "" {
+		qb = qb.Where("? = ANY(a.tag_list)", filters.Tag)
+	}
+	if filters.Author != "" {
+		qb = qb.Where("u.username = ?", filters.Author)
+	}
+	if filters.Favorited != "" {
+		qb = qb.Where(sq.Expr(`EXISTS (
+			SELECT 1 FROM favorites fav_filter
+			JOIN users fu ON fav_filter.user_id = fu.id
+			WHERE fav_filter.article_id = a.id AND fu.username = ?
+		)`, filters.Favorited))
+	}
+
+	// Add ordering and pagination
+	query, args, err := qb.
+		OrderBy("a.created_at DESC").
+		Limit(uint64(filters.Limit)).
+		Offset(uint64(filters.Offset)).
+		ToSql()
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	// Execute query
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var articles []Article
+	for rows.Next() {
+		var article Article
+		var author Profile
+		var favorited, following bool
+
+		err := rows.Scan(
+			&article.ID,
+			&article.Slug,
+			&article.Title,
+			&article.Description,
+			&article.TagList,
+			&article.CreatedAt,
+			&article.UpdatedAt,
+			&article.AuthorID,
+			&article.Version,
+			&article.FavoritesCount,
+			&author.Username,
+			&author.Bio,
+			&author.Image,
+			&favorited,
+			&following,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		article.Favorited = favorited
+		// Don't set following to true if current user is the author
+		if currentUser != nil && article.AuthorID == currentUser.ID {
+			author.Following = false
+		} else {
+			author.Following = following
+		}
+
+		article.Author = author
+		articles = append(articles, article)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// Get total count for the same filters (without pagination)
+	totalCount, err := s.countArticles(filters)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return articles, totalCount, nil
+}
+
+// countArticles returns the total count of articles matching the filters
+func (s *ArticleStore) countArticles(filters ArticleFilters) (int, error) {
+	// Build count query using Squirrel
+	qb := sq.Select("COUNT(a.id)").
+		From("articles a").
+		Join("users u ON a.author_id = u.id").
+		PlaceholderFormat(sq.Dollar)
+
+	// Add WHERE conditions based on filters (same as List method)
+	if filters.Tag != "" {
+		qb = qb.Where("? = ANY(a.tag_list)", filters.Tag)
+	}
+	if filters.Author != "" {
+		qb = qb.Where("u.username = ?", filters.Author)
+	}
+	if filters.Favorited != "" {
+		qb = qb.Where(sq.Expr(`EXISTS (
+			SELECT 1 FROM favorites fav
+			JOIN users fu ON fav.user_id = fu.id
+			WHERE fav.article_id = a.id AND fu.username = ?
+		)`, filters.Favorited))
+	}
+
+	query, args, err := qb.ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	var count int
+	err = s.db.QueryRow(ctx, query, args...).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }

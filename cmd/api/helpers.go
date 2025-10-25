@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -122,4 +123,68 @@ func (app *application) readJSON(w http.ResponseWriter, r *http.Request, dst any
 	}
 
 	return nil
+}
+
+// readInt reads an integer from a string and returns the default value if
+// the string is empty or not a valid integer.
+func (app *application) readInt(s string, defaultValue int) int {
+	if s == "" {
+		return defaultValue
+	}
+
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultValue
+	}
+
+	return i
+}
+
+// Pagination holds pagination parameters with validation.
+// This struct can be used across different endpoints to maintain consistent pagination logic.
+type Pagination struct {
+	Limit  int
+	Offset int
+}
+
+// readPagination reads pagination parameters from the HTTP request query string and returns
+// a Pagination struct with validated values. It applies sensible defaults and caps to prevent abuse.
+//
+// Usage example:
+//
+//	pagination := app.readPagination(r, 20, 100) // default limit: 20, max limit: 100
+//	// Use pagination.Limit and pagination.Offset in your queries
+func (app *application) readPagination(r *http.Request, defaultLimit, maxLimit int) Pagination {
+	// Extract query string from request
+	qs := r.URL.Query()
+
+	// Read limit and offset from query string, providing empty string as default
+	var limitStr, offsetStr string
+	if vals, ok := qs["limit"]; ok && len(vals) > 0 {
+		limitStr = vals[0]
+	}
+	if vals, ok := qs["offset"]; ok && len(vals) > 0 {
+		offsetStr = vals[0]
+	}
+
+	limit := app.readInt(limitStr, defaultLimit)
+	offset := app.readInt(offsetStr, 0)
+
+	// Validate and cap limit
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	if limit < 1 {
+		limit = defaultLimit
+	}
+
+	// Ensure offset is non-negative
+	if offset < 0 {
+		offset = 0
+	}
+
+	return Pagination{
+		Limit:  limit,
+		Offset: offset,
+	}
 }
