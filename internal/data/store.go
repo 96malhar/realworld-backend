@@ -72,4 +72,8 @@ type TagStoreInterface interface {
 type CommentStoreInterface interface {
 	// Insert creates a new comment for an article.
 	Insert(comment *Comment) error
+	// GetByArticleID retrieves all comments with author details for an article by its article ID.
+	GetByArticleID(articleID int64) ([]Comment, error)
+	// SetFollowingStatus efficiently checks and sets the following status for all comment authors.
+	SetFollowingStatus(comments []Comment, currentUserID int64) error
 }

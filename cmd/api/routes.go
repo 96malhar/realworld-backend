@@ -40,6 +40,7 @@ func (app *application) routes() *chi.Mux {
 		r.With(app.requireAuthenticatedUser).Post("/{slug}/favorite", app.favoriteArticleHandler)
 		r.With(app.requireAuthenticatedUser).Delete("/{slug}/favorite", app.unfavoriteArticleHandler)
 		r.With(app.requireAuthenticatedUser).Post("/{slug}/comments", app.createCommentHandler)
+		r.Get("/{slug}/comments", app.getCommentsHandler)
 	})
 
 	r.Get("/tags", app.getTagsHandler)

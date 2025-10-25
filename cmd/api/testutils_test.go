@@ -146,3 +146,34 @@ func (d *dummyJWTMaker) VerifyToken(tokenString string) (*auth.Claims, error) {
 	}
 	return &auth.Claims{UserID: 1}, nil
 }
+
+// createCommentHelper is a test helper that creates a comment on an article
+func createCommentHelper(t *testing.T, ts *testServer, token, articleLocation, body string) {
+	t.Helper()
+
+	requestBody := `{"comment": {"body": "` + body + `"}}`
+	headers := map[string]string{
+		"Authorization": "Token " + token,
+	}
+
+	res, err := ts.executeRequest(http.MethodPost, articleLocation+"/comments", requestBody, headers)
+	require.NoError(t, err)
+	defer res.Body.Close() //nolint: errcheck
+
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+}
+
+// followUser is a test helper that makes one user follow another
+func followUser(t *testing.T, ts *testServer, token, username string) {
+	t.Helper()
+
+	headers := map[string]string{
+		"Authorization": "Token " + token,
+	}
+
+	res, err := ts.executeRequest(http.MethodPost, "/profiles/"+username+"/follow", "", headers)
+	require.NoError(t, err)
+	defer res.Body.Close() //nolint: errcheck
+
+	require.Equal(t, http.StatusOK, res.StatusCode)
+}
