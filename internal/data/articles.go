@@ -370,11 +370,12 @@ func (s *ArticleStore) InsertTags(tags ...string) error {
 
 // ArticleFilters holds filtering and pagination parameters for listing articles
 type ArticleFilters struct {
-	Tag       string
-	Author    string
-	Favorited string
-	Limit     int
-	Offset    int
+	Tag       string // Filter articles by tag name (exact match)
+	Author    string // Filter articles by author username
+	Favorited string // Filter articles favorited by a specific username
+	Feed      bool   // If true, only return articles from users that the current user follows
+	Limit     int    // Maximum number of articles to return
+	Offset    int    // Number of articles to skip (for pagination)
 }
 
 // alphanumericRX validates strings containing only alphanumeric characters, underscores, and hyphens.
@@ -433,6 +434,16 @@ func (s *ArticleStore) List(filters ArticleFilters, currentUser *User) ([]Articl
 		LeftJoin("favorites fav ON a.id = fav.article_id AND fav.user_id = ?", userID).
 		LeftJoin("follows fol ON a.author_id = fol.followed_id AND fol.follower_id = ?", userID).
 		PlaceholderFormat(sq.Dollar)
+
+	// Handle feed filter - only show articles from followed users
+	if filters.Feed {
+		// Anonymous users have no feed (userID is -1 for anonymous users)
+		if userID == -1 {
+			return []Article{}, 0, nil
+		}
+		// Add INNER JOIN to only get articles from followed users
+		qb = qb.Join("follows f ON a.author_id = f.followed_id AND f.follower_id = ?", userID)
+	}
 
 	// Add WHERE conditions based on filters
 	if filters.Tag != "" {

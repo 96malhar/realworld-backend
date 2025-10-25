@@ -1436,3 +1436,278 @@ func TestArticleStore_GetIDBySlug(t *testing.T) {
 	require.Equal(t, data.ErrRecordNotFound, err, "Should return ErrRecordNotFound for non-existent slug")
 	require.Zero(t, nonExistentID, "ID should be zero for non-existent article")
 }
+
+func TestFeedArticlesHandler(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t)
+
+	// Create 7 test users
+	registerUser(t, ts, "alice", "alice@example.com", "password123")
+	registerUser(t, ts, "bob", "bob@example.com", "password123")
+	registerUser(t, ts, "charlie", "charlie@example.com", "password123")
+	registerUser(t, ts, "david", "david@example.com", "password123")
+	registerUser(t, ts, "emily", "emily@example.com", "password123")
+	registerUser(t, ts, "frank", "frank@example.com", "password123")
+	registerUser(t, ts, "grace", "grace@example.com", "password123")
+
+	aliceToken := loginUser(t, ts, "alice@example.com", "password123")
+	bobToken := loginUser(t, ts, "bob@example.com", "password123")
+	charlieToken := loginUser(t, ts, "charlie@example.com", "password123")
+	davidToken := loginUser(t, ts, "david@example.com", "password123")
+	emilyToken := loginUser(t, ts, "emily@example.com", "password123")
+	frankToken := loginUser(t, ts, "frank@example.com", "password123")
+	graceToken := loginUser(t, ts, "grace@example.com", "password123")
+
+	// Each user creates multiple articles
+	// Alice creates 3 articles
+	_ = createArticle(t, ts, aliceToken, "Alice Article 1", "First article by Alice", "Content 1", []string{"alice", "golang"})
+	time.Sleep(10 * time.Millisecond) // Ensure different timestamps
+	_ = createArticle(t, ts, aliceToken, "Alice Article 2", "Second article by Alice", "Content 2", []string{"alice", "testing"})
+	time.Sleep(10 * time.Millisecond)
+	_ = createArticle(t, ts, aliceToken, "Alice Article 3", "Third article by Alice", "Content 3", []string{"alice", "advanced"})
+	time.Sleep(10 * time.Millisecond)
+
+	// Bob creates 2 articles
+	_ = createArticle(t, ts, bobToken, "Bob Article 1", "First article by Bob", "Content", []string{"bob", "javascript"})
+	time.Sleep(10 * time.Millisecond)
+	_ = createArticle(t, ts, bobToken, "Bob Article 2", "Second article by Bob", "Content", []string{"bob", "react"})
+	time.Sleep(10 * time.Millisecond)
+
+	// Charlie creates 3 articles
+	_ = createArticle(t, ts, charlieToken, "Charlie Article 1", "First article by Charlie", "Content", []string{"charlie", "python"})
+	time.Sleep(10 * time.Millisecond)
+	_ = createArticle(t, ts, charlieToken, "Charlie Article 2", "Second article by Charlie", "Content", []string{"charlie", "django"})
+	time.Sleep(10 * time.Millisecond)
+	_ = createArticle(t, ts, charlieToken, "Charlie Article 3", "Third article by Charlie", "Content", []string{"charlie", "web"})
+	time.Sleep(10 * time.Millisecond)
+
+	// David creates 2 articles
+	_ = createArticle(t, ts, davidToken, "David Article 1", "First article by David", "Content", []string{"david", "rust"})
+	time.Sleep(10 * time.Millisecond)
+	_ = createArticle(t, ts, davidToken, "David Article 2", "Second article by David", "Content", []string{"david", "systems"})
+	time.Sleep(10 * time.Millisecond)
+
+	// Emily creates 2 articles
+	_ = createArticle(t, ts, emilyToken, "Emily Article 1", "First article by Emily", "Content", []string{"emily", "typescript"})
+	time.Sleep(10 * time.Millisecond)
+	_ = createArticle(t, ts, emilyToken, "Emily Article 2", "Second article by Emily", "Content", []string{"emily", "frontend"})
+	time.Sleep(10 * time.Millisecond)
+
+	// Frank creates 2 articles
+	_ = createArticle(t, ts, frankToken, "Frank Article 1", "First article by Frank", "Content", []string{"frank", "docker"})
+	time.Sleep(10 * time.Millisecond)
+	_ = createArticle(t, ts, frankToken, "Frank Article 2", "Second article by Frank", "Content", []string{"frank", "devops"})
+	time.Sleep(10 * time.Millisecond)
+
+	// Grace creates 2 articles
+	_ = createArticle(t, ts, graceToken, "Grace Article 1", "First article by Grace", "Content", []string{"grace", "datascience"})
+	time.Sleep(10 * time.Millisecond)
+	_ = createArticle(t, ts, graceToken, "Grace Article 2", "Second article by Grace", "Content", []string{"grace", "ml"})
+	time.Sleep(10 * time.Millisecond)
+
+	// Setup following relationships
+	// Alice follows Bob and Charlie
+	followUser(t, ts, aliceToken, "bob")
+	followUser(t, ts, aliceToken, "charlie")
+
+	// Bob follows Alice, David, and Emily
+	followUser(t, ts, bobToken, "alice")
+	followUser(t, ts, bobToken, "david")
+	followUser(t, ts, bobToken, "emily")
+
+	// Charlie follows Bob and Frank
+	followUser(t, ts, charlieToken, "bob")
+	followUser(t, ts, charlieToken, "frank")
+
+	// David follows Alice, Charlie, and Grace
+	followUser(t, ts, davidToken, "alice")
+	followUser(t, ts, davidToken, "charlie")
+	followUser(t, ts, davidToken, "grace")
+
+	// Emily follows Bob and Grace
+	followUser(t, ts, emilyToken, "bob")
+	followUser(t, ts, emilyToken, "grace")
+
+	// Frank follows David and Emily
+	followUser(t, ts, frankToken, "david")
+	followUser(t, ts, frankToken, "emily")
+
+	// Grace follows no one (empty feed test case)
+
+	t.Run("Alice's feed contains articles from Bob and Charlie", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles/feed", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		// Alice follows Bob (2 articles) and Charlie (3 articles) = 5 total
+		assert.Equal(t, 5, response.ArticlesCount)
+		assert.Len(t, response.Articles, 5)
+
+		// Verify articles are from Bob and Charlie only
+		for _, article := range response.Articles {
+			assert.Contains(t, []string{"bob", "charlie"}, article.Author.Username)
+			assert.True(t, article.Author.Following, "All authors in feed should be followed")
+		}
+
+		// Verify ordering (most recent first) - Charlie's Article 3 should be first
+		assert.Equal(t, "Charlie Article 3", response.Articles[0].Title)
+		assert.Equal(t, "charlie", response.Articles[0].Author.Username)
+	})
+
+	t.Run("Bob's feed contains articles from Alice, David, and Emily", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + bobToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles/feed", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		// Bob follows Alice (3), David (2), Emily (2) = 7 total
+		assert.Equal(t, 7, response.ArticlesCount)
+		assert.Len(t, response.Articles, 7)
+
+		// Verify articles are from Alice, David, and Emily only
+		for _, article := range response.Articles {
+			assert.Contains(t, []string{"alice", "david", "emily"}, article.Author.Username)
+			assert.True(t, article.Author.Following)
+		}
+	})
+
+	t.Run("Grace's feed is empty (follows no one)", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + graceToken}
+		res, err := ts.executeRequest(http.MethodGet, "/articles/feed", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 0, response.ArticlesCount)
+		assert.Len(t, response.Articles, 0)
+	})
+
+	t.Run("Unauthenticated request fails", func(t *testing.T) {
+		res, err := ts.executeRequest(http.MethodGet, "/articles/feed", "", nil)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		// Feed requires authentication
+		assert.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	})
+
+	t.Run("Feed pagination works correctly", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + bobToken}
+
+		// First page: limit=3, offset=0
+		res, err := ts.executeRequest(http.MethodGet, "/articles/feed?limit=3&offset=0", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		assert.Equal(t, 7, response.ArticlesCount, "Total count should be 7")
+		assert.Len(t, response.Articles, 3, "Should return 3 articles")
+
+		// Verify most recent 3 articles
+		assert.Equal(t, "Emily Article 2", response.Articles[0].Title)
+		assert.Equal(t, "Emily Article 1", response.Articles[1].Title)
+		assert.Equal(t, "David Article 2", response.Articles[2].Title)
+
+		// Second page: limit=3, offset=3
+		res2, err := ts.executeRequest(http.MethodGet, "/articles/feed?limit=3&offset=3", "", headers)
+		require.NoError(t, err)
+		defer res2.Body.Close()
+
+		require.Equal(t, http.StatusOK, res2.StatusCode)
+
+		var response2 struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res2.Body, &response2)
+
+		assert.Equal(t, 7, response2.ArticlesCount, "Total count should still be 7")
+		assert.Len(t, response2.Articles, 3, "Should return 3 more articles")
+
+		// Verify next 3 articles
+		assert.Equal(t, "David Article 1", response2.Articles[0].Title)
+		assert.Equal(t, "Alice Article 3", response2.Articles[1].Title)
+		assert.Equal(t, "Alice Article 2", response2.Articles[2].Title)
+	})
+
+	t.Run("Feed respects favorited status", func(t *testing.T) {
+		headers := map[string]string{"Authorization": "Token " + aliceToken}
+
+		// Alice favorites Bob's first article
+		res, err := ts.executeRequest(http.MethodGet, "/articles/feed", "", headers)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		var beforeFavorite struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &beforeFavorite)
+
+		// Find Bob's Article 1 and verify not favorited
+		var bobArticle1Slug string
+		for _, article := range beforeFavorite.Articles {
+			if article.Title == "Bob Article 1" {
+				assert.False(t, article.Favorited, "Should not be favorited initially")
+				bobArticle1Slug = article.Slug
+				break
+			}
+		}
+		require.NotEmpty(t, bobArticle1Slug, "Should find Bob Article 1")
+
+		// Favorite the article
+		favoriteArticleHelper(t, ts, aliceToken, bobArticle1Slug)
+
+		// Check feed again
+		res2, err := ts.executeRequest(http.MethodGet, "/articles/feed", "", headers)
+		require.NoError(t, err)
+		defer res2.Body.Close()
+
+		var afterFavorite struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res2.Body, &afterFavorite)
+
+		// Find Bob's Article 1 and verify now favorited
+		for _, article := range afterFavorite.Articles {
+			if article.Title == "Bob Article 1" {
+				assert.True(t, article.Favorited, "Should be favorited now")
+				assert.Equal(t, 1, article.FavoritesCount, "Favorites count should be 1")
+				break
+			}
+		}
+	})
+}

@@ -55,6 +55,39 @@ func (app *application) listArticlesHandler(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+func (app *application) feedArticlesHandler(w http.ResponseWriter, r *http.Request) {
+	// Read pagination parameters using reusable helper
+	// Default limit is 20, max limit is 100
+	pagination := app.readPagination(r, 20, 100)
+
+	// Get current user (authentication required for feed)
+	currentUser := app.contextGetUser(r)
+
+	// Create filters for feed - only get articles from followed users
+	filters := data.ArticleFilters{
+		Feed:   true,
+		Limit:  pagination.Limit,
+		Offset: pagination.Offset,
+	}
+
+	// Get articles using List method with Feed filter
+	articles, totalCount, err := app.modelStore.Articles.List(filters, currentUser)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	// Write response
+	err = app.writeJSON(w, http.StatusOK, envelope{
+		"articles":      articles,
+		"articlesCount": totalCount,
+	}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+}
+
 func (app *application) createArticleHandler(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Article struct {
