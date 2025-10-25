@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/rand"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -74,6 +75,13 @@ func randomString(length int) string {
 	return string(b)
 }
 
+// SortTags sorts the article's tags alphabetically for consistent ordering
+func (a *Article) SortTags() {
+	if len(a.TagList) > 0 {
+		sort.Strings(a.TagList)
+	}
+}
+
 type ArticleStore struct {
 	db      *pgxpool.Pool
 	timeout time.Duration
@@ -81,6 +89,7 @@ type ArticleStore struct {
 
 func (s *ArticleStore) Insert(article *Article) error {
 	article.GenerateSlug()
+	article.SortTags()
 
 	query := `
 		INSERT INTO articles (slug, title, description, body, tag_list, author_id)
@@ -368,7 +377,9 @@ type ArticleFilters struct {
 	Offset    int
 }
 
-var alphanumericRX = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+// alphanumericRX validates strings containing only alphanumeric characters, underscores, and hyphens.
+// This is used for validating usernames, tags, and other user-provided identifiers.
+var alphanumericRX = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // Validate checks that the ArticleFilters fields are valid.
 // Note: Pagination parameters (Limit and Offset) are validated and normalized
@@ -378,21 +389,21 @@ func (f ArticleFilters) Validate(v *validator.Validator) {
 	if f.Tag != "" {
 		v.Check(len(f.Tag) <= 50, "Tag must not be more than 50 characters")
 		v.Check(len(f.Tag) >= 1, "Tag must not be empty")
-		v.Check(alphanumericRX.MatchString(f.Tag), "Tag must contain only alphanumeric characters")
+		v.Check(alphanumericRX.MatchString(f.Tag), "Tag must contain only alphanumeric characters, hyphens, and underscores")
 	}
 
 	// Validate author username length and characters if provided
 	if f.Author != "" {
 		v.Check(len(f.Author) <= 50, "Author must not be more than 50 characters")
 		v.Check(len(f.Author) >= 1, "Author must not be empty")
-		v.Check(alphanumericRX.MatchString(f.Author), "Author must contain only alphanumeric characters")
+		v.Check(alphanumericRX.MatchString(f.Author), "Author must contain only alphanumeric characters, hyphens, and underscores")
 	}
 
 	// Validate favorited username length and characters if provided
 	if f.Favorited != "" {
 		v.Check(len(f.Favorited) <= 50, "Favorited username must not be more than 50 characters")
 		v.Check(len(f.Favorited) >= 1, "Favorited username must not be empty")
-		v.Check(alphanumericRX.MatchString(f.Favorited), "Favorited username must contain only alphanumeric characters")
+		v.Check(alphanumericRX.MatchString(f.Favorited), "Favorited username must contain only alphanumeric characters, hyphens, and underscores")
 	}
 }
 
@@ -505,6 +516,10 @@ func (s *ArticleStore) List(filters ArticleFilters, currentUser *User) ([]Articl
 		return nil, 0, err
 	}
 
-	// If no articles found, totalCount remains 0
+	// If no articles found, return empty slice instead of nil to ensure JSON marshals to [] not null
+	if articles == nil {
+		articles = []Article{}
+	}
+
 	return articles, totalCount, nil
 }

@@ -89,6 +89,19 @@ func TestCreateArticleHandler(t *testing.T) {
 				if !strings.Contains(locationHeader, "/articles/test-article") {
 					t.Errorf("expected Location header to contain /articles/test-article, got %s", locationHeader)
 				}
+
+				// Verify response body contains the created article
+				var response getArticleResponse
+				readJsonResponse(t, res.Body, &response)
+				assert.Equal(t, "Test Article", response.Article.Title)
+				assert.Equal(t, "Test description", response.Article.Description)
+				assert.Equal(t, "Test body content", response.Article.Body)
+				assert.Equal(t, []string{"golang", "test"}, response.Article.TagList) // Tags are sorted alphabetically
+				assert.Equal(t, "bob", response.Article.Author.Username)
+				assert.NotZero(t, response.Article.CreatedAt)
+				assert.NotZero(t, response.Article.UpdatedAt)
+				assert.Equal(t, 0, response.Article.FavoritesCount)
+				assert.False(t, response.Article.Favorited)
 			},
 		},
 		{
@@ -103,6 +116,15 @@ func TestCreateArticleHandler(t *testing.T) {
 				if !strings.Contains(locationHeader, "/articles/test-article-no-tags") {
 					t.Errorf("expected Location header to contain /articles/test-article-no-tags, got %s", locationHeader)
 				}
+
+				// Verify response body contains the created article
+				var response getArticleResponse
+				readJsonResponse(t, res.Body, &response)
+				assert.Equal(t, "Test Article No Tags", response.Article.Title)
+				assert.Equal(t, "Test description", response.Article.Description)
+				assert.Equal(t, "Test body content", response.Article.Body)
+				assert.Empty(t, response.Article.TagList)
+				assert.Equal(t, "bob", response.Article.Author.Username)
 			},
 		},
 		{
@@ -1238,8 +1260,8 @@ func TestListArticlesHandler(t *testing.T) {
 		}{
 			{
 				name:          "tag with special characters",
-				queryString:   "/articles?tag=golang-test",
-				expectedError: "Tag must contain only alphanumeric characters",
+				queryString:   "/articles?tag=golang@test",
+				expectedError: "Tag must contain only alphanumeric characters, hyphens, and underscores",
 			},
 			{
 				name:          "tag too long",
@@ -1249,7 +1271,7 @@ func TestListArticlesHandler(t *testing.T) {
 			{
 				name:          "author with special characters",
 				queryString:   "/articles?author=alice@test",
-				expectedError: "Author must contain only alphanumeric characters",
+				expectedError: "Author must contain only alphanumeric characters, hyphens, and underscores",
 			},
 			{
 				name:          "author too long",
@@ -1258,8 +1280,8 @@ func TestListArticlesHandler(t *testing.T) {
 			},
 			{
 				name:          "favorited with special characters",
-				queryString:   "/articles?favorited=bob_user",
-				expectedError: "Favorited username must contain only alphanumeric characters",
+				queryString:   "/articles?favorited=bob@test",
+				expectedError: "Favorited username must contain only alphanumeric characters, hyphens, and underscores",
 			},
 			{
 				name:          "favorited too long",
@@ -1286,7 +1308,7 @@ func TestListArticlesHandler(t *testing.T) {
 	t.Run("Multiple validation errors", func(t *testing.T) {
 		headers := map[string]string{"Authorization": "Token " + aliceToken}
 		longTag := strings.Repeat("a", 51)
-		res, err := ts.executeRequest(http.MethodGet, "/articles?tag="+longTag+"&author=test-user&favorited=user@test", "", headers)
+		res, err := ts.executeRequest(http.MethodGet, "/articles?tag="+longTag+"&author=test@user&favorited=user@test", "", headers)
 		require.NoError(t, err)
 		defer res.Body.Close()
 
@@ -1296,8 +1318,8 @@ func TestListArticlesHandler(t *testing.T) {
 		readJsonResponse(t, res.Body, &response)
 		assert.GreaterOrEqual(t, len(response.Errors), 3, "Should have multiple validation errors")
 		assert.Contains(t, response.Errors, "Tag must not be more than 50 characters")
-		assert.Contains(t, response.Errors, "Author must contain only alphanumeric characters")
-		assert.Contains(t, response.Errors, "Favorited username must contain only alphanumeric characters")
+		assert.Contains(t, response.Errors, "Author must contain only alphanumeric characters, hyphens, and underscores")
+		assert.Contains(t, response.Errors, "Favorited username must contain only alphanumeric characters, hyphens, and underscores")
 	})
 
 	t.Run("Valid filters pass validation", func(t *testing.T) {

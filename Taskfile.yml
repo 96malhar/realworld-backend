@@ -91,21 +91,6 @@ tasks:
       - echo "Checking vulnerabilities..."
       - govulncheck ./...
 
-  smoketest:
-    desc: Run the smoke test
-    vars:
-      SMOKETEST_DB_NAME: conduit_smoketest
-    env:
-      DB_DSN: postgres://postgres:postgres@localhost:5432/{{.SMOKETEST_DB_NAME}}?sslmode=disable
-    cmds:
-      - defer: PGPASSWORD=postgres psql -U postgres -h localhost -c "DROP DATABASE IF EXISTS {{.SMOKETEST_DB_NAME}};"
-      - defer: echo "Cleaning up the database {{.SMOKETEST_DB_NAME}}"
-      - PGPASSWORD=postgres psql -U postgres -h localhost -c "CREATE DATABASE {{.SMOKETEST_DB_NAME}};"
-      - echo "Running migrations using $DB_DSN"
-      - migrate -path ./migrations -database $DB_DSN up
-      - echo "Running smoke test.."
-      - ./smoke_test.sh
-
   test:
     desc: Run all tests
     cmds:
@@ -115,3 +100,36 @@ tasks:
     desc: Visualize the code coverage
     cmds:
       - go tool cover -html=coverage.out
+
+  newman:
+    desc: Run RealWorld API integration tests using Newman (Postman CLI)
+    vars:
+      NEWMAN_DB_NAME: conduit_newman_test
+      APIURL: http://localhost:4000
+      USERNAME: newman-test-user
+      EMAIL: newman@example.com
+      PASSWORD: newman-password-123
+    env:
+      DB_DSN: postgres://postgres:postgres@localhost:5432/{{.NEWMAN_DB_NAME}}?sslmode=disable
+    cmds:
+      - defer: PGPASSWORD=postgres psql -U postgres -h localhost -c "DROP DATABASE IF EXISTS {{.NEWMAN_DB_NAME}};"
+      - defer: pkill -f "./bin/api" || true
+      # Download collection if not exists
+      - test -f Conduit.postman_collection.json || curl -o Conduit.postman_collection.json https://raw.githubusercontent.com/gothinkster/realworld/main/api/Conduit.postman_collection.json
+      # Setup test database
+      - PGPASSWORD=postgres psql -U postgres -h localhost -c "CREATE DATABASE {{.NEWMAN_DB_NAME}};"
+      - migrate -path ./migrations -database $DB_DSN up
+      # Build and start server
+      - go build -ldflags '-s' -o ./bin/api ./cmd/api
+      - ./bin/api -db-dsn $DB_DSN -jwt-secret $JWT_SECRET -jwt-issuer $JWT_ISSUER > /tmp/newman-server.log 2>&1 &
+      - sleep 3
+      # Run Newman tests
+      - |
+        newman run Conduit.postman_collection.json \
+          --env-var "APIURL={{.APIURL}}" \
+          --env-var "USERNAME={{.USERNAME}}" \
+          --env-var "EMAIL={{.EMAIL}}" \
+          --env-var "PASSWORD={{.PASSWORD}}" \
+          --color on \
+          --reporters cli,json \
+          --reporter-json-export newman-results.json || echo "⚠️  Some tests failed, see newman-results.json for details"

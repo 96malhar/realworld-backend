@@ -31,8 +31,16 @@ jobs:
       - name: Install dependencies
         run: task install:dependencies
 
-      - name: Run Smoke Test
-        run: task smoketest
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Run Newman API Tests
+        run: task newman
 
       - name: Test
         run: task test

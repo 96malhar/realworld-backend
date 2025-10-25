@@ -92,10 +92,17 @@ func (app *application) createArticleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Fetch the complete article with author details
+	createdArticle, err := app.modelStore.Articles.GetBySlug(article.Slug, app.contextGetUser(r))
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
 	// set location header to point to the new article
 	headers := make(http.Header)
 	headers.Set("Location", "/articles/"+article.Slug)
-	err = app.writeJSON(w, http.StatusCreated, envelope{}, headers)
+	err = app.writeJSON(w, http.StatusCreated, envelope{"article": createdArticle}, headers)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
