@@ -18,3 +18,7 @@ CREATE TABLE articles
 CREATE INDEX idx_articles_slug ON articles (slug);
 CREATE INDEX idx_articles_author_id ON articles (author_id);
 CREATE INDEX idx_articles_created_at ON articles (created_at DESC);
+
+-- GIN index for efficient array operations (tag filtering)
+-- Used for queries like: WHERE ? = ANY(tag_list)
+CREATE INDEX idx_articles_tag_list ON articles USING GIN (tag_list);

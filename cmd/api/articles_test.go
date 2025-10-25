@@ -1118,11 +1118,12 @@ func TestListArticlesHandler(t *testing.T) {
 
 		// Alice follows Bob and David, but not herself
 		for _, article := range response.Articles {
-			if article.Author.Username == "alice" {
+			switch article.Author.Username {
+			case "alice":
 				assert.False(t, article.Author.Following, "User should not follow themselves")
-			} else if article.Author.Username == "bob" || article.Author.Username == "david" {
+			case "bob", "david":
 				assert.True(t, article.Author.Following, "Alice follows %s", article.Author.Username)
-			} else {
+			default:
 				assert.False(t, article.Author.Following, "Alice doesn't follow %s", article.Author.Username)
 			}
 		}
