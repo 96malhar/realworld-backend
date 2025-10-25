@@ -16,6 +16,7 @@ type ModelStore struct {
 	Users    UserStoreInterface
 	Articles ArticleStoreInterface
 	Tags     TagStoreInterface
+	Comments CommentStoreInterface
 }
 
 func NewModelStore(db *pgxpool.Pool, timeout time.Duration) ModelStore {
@@ -23,6 +24,7 @@ func NewModelStore(db *pgxpool.Pool, timeout time.Duration) ModelStore {
 		Users:    &UserStore{db: db, timeout: timeout},
 		Articles: &ArticleStore{db: db, timeout: timeout},
 		Tags:     &TagStore{db: db, timeout: timeout},
+		Comments: &CommentStore{db: db, timeout: timeout},
 	}
 }
 
@@ -48,6 +50,8 @@ type UserStoreInterface interface {
 type ArticleStoreInterface interface {
 	// Insert a new record into the articles table.
 	Insert(article *Article) error
+	// GetIDBySlug retrieves just the article ID by its slug (lightweight alternative to GetBySlug).
+	GetIDBySlug(slug string) (int64, error)
 	// GetBySlug retrieves a specific record from the articles table by slug.
 	GetBySlug(slug string, currentUser *User) (*Article, error)
 	// FavoriteBySlug favorites the article with the given slug for the user and returns the updated article.
@@ -63,4 +67,9 @@ type ArticleStoreInterface interface {
 type TagStoreInterface interface {
 	// GetAll retrieves all tags from the tags table.
 	GetAll() ([]string, error)
+}
+
+type CommentStoreInterface interface {
+	// Insert creates a new comment for an article.
+	Insert(comment *Comment) error
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -763,4 +764,36 @@ func TestUpdateArticleHandler(t *testing.T) {
 	}
 
 	testHandler(t, ts, testcases...)
+}
+
+func TestArticleStore_GetIDBySlug(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t)
+
+	// Setup: Register user and create an article
+	registerUser(t, ts, "alice", "alice@example.com", "password123")
+	aliceToken := loginUser(t, ts, "alice@example.com", "password123")
+
+	// Create an article
+	articleLocation := createArticle(t, ts, aliceToken, "Test Article for ID Lookup", "Testing ID by slug", "Article body content", []string{"test"})
+
+	// Extract slug from location header (format: /articles/test-article-for-id-lookup-xxxxxx)
+	slug := articleLocation[10:] // Remove "/articles/" prefix
+
+	// Test: Get article ID by slug
+	articleID, err := ts.app.modelStore.Articles.GetIDBySlug(slug)
+	require.NoError(t, err)
+	require.NotZero(t, articleID, "Article ID should not be zero")
+
+	// Verify it's the correct ID by getting the full article
+	fullArticle, err := ts.app.modelStore.Articles.GetBySlug(slug, data.AnonymousUser)
+	require.NoError(t, err)
+	require.Equal(t, fullArticle.ID, articleID, "IDs should match")
+
+	// Test: Non-existent slug
+	nonExistentID, err := ts.app.modelStore.Articles.GetIDBySlug("non-existent-slug-12345")
+	require.Error(t, err)
+	require.Equal(t, data.ErrRecordNotFound, err, "Should return ErrRecordNotFound for non-existent slug")
+	require.Zero(t, nonExistentID, "ID should be zero for non-existent article")
 }

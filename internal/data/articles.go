@@ -106,6 +106,27 @@ func (s *ArticleStore) Insert(article *Article) error {
 	return nil
 }
 
+// GetIDBySlug retrieves just the article ID by its slug.
+// This is a lightweight alternative to GetBySlug when only the ID is needed.
+func (s *ArticleStore) GetIDBySlug(slug string) (int64, error) {
+	query := `SELECT id FROM articles WHERE slug = $1`
+
+	var articleID int64
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	err := s.db.QueryRow(ctx, query, slug).Scan(&articleID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, ErrRecordNotFound
+		}
+		return 0, err
+	}
+
+	return articleID, nil
+}
+
 // GetBySlug retrieves an article by its slug.
 func (s *ArticleStore) GetBySlug(slug string, currentUser *User) (*Article, error) {
 	query := `
