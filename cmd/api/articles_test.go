@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1305,6 +1306,79 @@ func TestListArticlesHandler(t *testing.T) {
 		defer res.Body.Close()
 
 		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+}
+
+func TestListArticlesHandler_Pagination(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t)
+
+	// Create a fresh user with exactly 10 articles
+	registerUser(t, ts, "pagination-user", "pagination@example.com", "password123")
+	token := loginUser(t, ts, "pagination@example.com", "password123")
+
+	// Create 10 articles (in order, oldest to newest)
+	articleSlugs := make([]string, 10)
+	for i := 0; i < 10; i++ {
+		title := fmt.Sprintf("Article %d", i+1)
+		description := fmt.Sprintf("Description for article %d", i+1)
+		body := fmt.Sprintf("Body content for article %d", i+1)
+		articleLocation := createArticle(t, ts, token, title, description, body, []string{"test"})
+		articleSlugs[i] = strings.TrimPrefix(articleLocation, "/articles/")
+	}
+
+	t.Run("First page with limit=5 and offset=0", func(t *testing.T) {
+		res, err := ts.executeRequest(http.MethodGet, "/articles?limit=5&offset=0", "", nil)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		// Should return 5 articles
+		assert.Len(t, response.Articles, 5)
+		// Total count should be 10
+		assert.Equal(t, 10, response.ArticlesCount)
+
+		// Articles should be returned in reverse chronological order (newest first)
+		// So we expect Article 10, 9, 8, 7, 6
+		assert.Equal(t, articleSlugs[9], response.Articles[0].Slug, "First article should be Article 10 (newest)")
+		assert.Equal(t, articleSlugs[8], response.Articles[1].Slug, "Second article should be Article 9")
+		assert.Equal(t, articleSlugs[7], response.Articles[2].Slug, "Third article should be Article 8")
+		assert.Equal(t, articleSlugs[6], response.Articles[3].Slug, "Fourth article should be Article 7")
+		assert.Equal(t, articleSlugs[5], response.Articles[4].Slug, "Fifth article should be Article 6")
+	})
+
+	t.Run("Second page with limit=10 and offset=5", func(t *testing.T) {
+		res, err := ts.executeRequest(http.MethodGet, "/articles?limit=10&offset=5", "", nil)
+		require.NoError(t, err)
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		var response struct {
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
+		}
+		readJsonResponse(t, res.Body, &response)
+
+		// Should return 5 articles (only 5 remaining after skipping first 5)
+		assert.Len(t, response.Articles, 5)
+		// Total count should still be 10
+		assert.Equal(t, 10, response.ArticlesCount)
+
+		// Should get the remaining articles: Article 5, 4, 3, 2, 1
+		assert.Equal(t, articleSlugs[4], response.Articles[0].Slug, "First article should be Article 5")
+		assert.Equal(t, articleSlugs[3], response.Articles[1].Slug, "Second article should be Article 4")
+		assert.Equal(t, articleSlugs[2], response.Articles[2].Slug, "Third article should be Article 3")
+		assert.Equal(t, articleSlugs[1], response.Articles[3].Slug, "Fourth article should be Article 2")
+		assert.Equal(t, articleSlugs[0], response.Articles[4].Slug, "Fifth article should be Article 1 (oldest)")
 	})
 }
 
