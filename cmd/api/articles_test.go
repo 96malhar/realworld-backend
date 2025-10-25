@@ -13,20 +13,7 @@ import (
 )
 
 type getArticleResponse struct {
-	Article article `json:"article"`
-}
-
-type article struct {
-	Slug           string    `json:"slug"`
-	Title          string    `json:"title"`
-	Description    string    `json:"description"`
-	Body           string    `json:"body"`
-	TagList        []string  `json:"tagList"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
-	FavoritesCount int       `json:"favoritesCount"`
-	Favorited      bool      `json:"favorited"`
-	Author         profile   `json:"author"`
+	Article data.Article `json:"article"`
 }
 
 func createArticle(t *testing.T, ts *testServer, token, title, description, body string, tags []string) string {
@@ -863,8 +850,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -891,8 +878,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -927,8 +914,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -992,8 +979,8 @@ func TestListArticlesHandler(t *testing.T) {
 				require.Equal(t, http.StatusOK, res.StatusCode)
 
 				var response struct {
-					Articles      []article `json:"articles"`
-					ArticlesCount int       `json:"articlesCount"`
+					Articles      []data.Article `json:"articles"`
+					ArticlesCount int            `json:"articlesCount"`
 				}
 				readJsonResponse(t, res.Body, &response)
 
@@ -1017,8 +1004,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -1040,8 +1027,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -1068,8 +1055,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -1097,8 +1084,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -1123,8 +1110,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -1177,8 +1164,8 @@ func TestListArticlesHandler(t *testing.T) {
 				require.Equal(t, http.StatusOK, res.StatusCode)
 
 				var response struct {
-					Articles      []article `json:"articles"`
-					ArticlesCount int       `json:"articlesCount"`
+					Articles      []data.Article `json:"articles"`
+					ArticlesCount int            `json:"articlesCount"`
 				}
 				readJsonResponse(t, res.Body, &response)
 
@@ -1203,8 +1190,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 
@@ -1221,8 +1208,8 @@ func TestListArticlesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		var response struct {
-			Articles      []article `json:"articles"`
-			ArticlesCount int       `json:"articlesCount"`
+			Articles      []data.Article `json:"articles"`
+			ArticlesCount int            `json:"articlesCount"`
 		}
 		readJsonResponse(t, res.Body, &response)
 		require.Len(t, response.Articles, 1)
