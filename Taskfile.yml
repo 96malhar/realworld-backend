@@ -139,4 +139,4 @@ tasks:
           --env-var "PASSWORD={{.PASSWORD}}" \
           --color on \
           --reporters cli,json \
-          --reporter-json-export newman-results.json || echo "⚠️  Some tests failed, see newman-results.json for details"
+          --reporter-json-export newman-results.json
