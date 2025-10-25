@@ -408,12 +408,14 @@ func (s *ArticleStore) List(filters ArticleFilters, currentUser *User) ([]Articl
 
 	// Build base query using Squirrel - always include favorited and following columns
 	// Note: body is excluded from list results for performance
+	// Use COUNT(*) OVER() window function to get total count in a single query
 	qb := sq.Select(
 		"a.id", "a.slug", "a.title", "a.description", "a.tag_list",
 		"a.created_at", "a.updated_at", "a.author_id", "a.version", "a.favorites_count",
 		"u.username", "u.bio", "u.image",
 		"COALESCE(fav.user_id IS NOT NULL, false) AS favorited",
 		"COALESCE(fol.follower_id IS NOT NULL, false) AS following",
+		"COUNT(*) OVER() AS total_count",
 	).
 		From("articles a").
 		Join("users u ON a.author_id = u.id").
@@ -458,6 +460,8 @@ func (s *ArticleStore) List(filters ArticleFilters, currentUser *User) ([]Articl
 	defer rows.Close()
 
 	var articles []Article
+	var totalCount int
+
 	for rows.Next() {
 		var article Article
 		var author Profile
@@ -479,6 +483,7 @@ func (s *ArticleStore) List(filters ArticleFilters, currentUser *User) ([]Articl
 			&author.Image,
 			&favorited,
 			&following,
+			&totalCount,
 		)
 		if err != nil {
 			return nil, 0, err
@@ -500,51 +505,6 @@ func (s *ArticleStore) List(filters ArticleFilters, currentUser *User) ([]Articl
 		return nil, 0, err
 	}
 
-	// Get total count for the same filters (without pagination)
-	totalCount, err := s.countArticles(filters)
-	if err != nil {
-		return nil, 0, err
-	}
-
+	// If no articles found, totalCount remains 0
 	return articles, totalCount, nil
-}
-
-// countArticles returns the total count of articles matching the filters
-func (s *ArticleStore) countArticles(filters ArticleFilters) (int, error) {
-	// Build count query using Squirrel
-	qb := sq.Select("COUNT(a.id)").
-		From("articles a").
-		Join("users u ON a.author_id = u.id").
-		PlaceholderFormat(sq.Dollar)
-
-	// Add WHERE conditions based on filters (same as List method)
-	if filters.Tag != "" {
-		qb = qb.Where("? = ANY(a.tag_list)", filters.Tag)
-	}
-	if filters.Author != "" {
-		qb = qb.Where("u.username = ?", filters.Author)
-	}
-	if filters.Favorited != "" {
-		qb = qb.Where(sq.Expr(`EXISTS (
-			SELECT 1 FROM favorites fav
-			JOIN users fu ON fav.user_id = fu.id
-			WHERE fav.article_id = a.id AND fu.username = ?
-		)`, filters.Favorited))
-	}
-
-	query, args, err := qb.ToSql()
-	if err != nil {
-		return 0, err
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
-	defer cancel()
-
-	var count int
-	err = s.db.QueryRow(ctx, query, args...).Scan(&count)
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
 }
