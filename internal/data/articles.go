@@ -206,20 +206,67 @@ func (s *ArticleStore) checkArticleFavorited(articleID, userID int64) (bool, err
 }
 
 // FavoriteBySlug favorites an article for the given user and returns the updated article.
+// Uses a single CTE query for optimal performance - no separate transaction needed.
 func (s *ArticleStore) FavoriteBySlug(slug string, userID int64) (*Article, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx) // nolint:errcheck
+	// Single optimized query using CTE to:
+	// 1. Look up article ID from slug
+	// 2. Insert favorite (idempotent with ON CONFLICT DO NOTHING)
+	// 3. Update favorites_count only if a new favorite was inserted
+	// 4. Return complete article with author, favorited, and following status
+	query := `
+		WITH article_lookup AS (
+			SELECT id FROM articles WHERE slug = $1
+		),
+		favorite_insert AS (
+			INSERT INTO favorites (user_id, article_id)
+			SELECT $2, id FROM article_lookup
+			ON CONFLICT (user_id, article_id) DO NOTHING
+			RETURNING article_id
+		),
+		update_count AS (
+			UPDATE articles a
+			SET favorites_count = favorites_count + 1
+			FROM favorite_insert fi
+			WHERE a.id = fi.article_id
+			RETURNING a.id, a.slug, a.title, a.description, a.body, a.tag_list,
+			          a.created_at, a.updated_at, a.favorites_count, a.version, a.author_id
+		)
+		SELECT COALESCE(uc.id, a.id), 
+		       COALESCE(uc.slug, a.slug),
+		       COALESCE(uc.title, a.title),
+		       COALESCE(uc.description, a.description),
+		       COALESCE(uc.body, a.body),
+		       COALESCE(uc.tag_list, a.tag_list),
+		       COALESCE(uc.created_at, a.created_at),
+		       COALESCE(uc.updated_at, a.updated_at),
+		       COALESCE(uc.favorites_count, a.favorites_count),
+		       COALESCE(uc.version, a.version),
+		       COALESCE(uc.author_id, a.author_id),
+		       u.username, u.bio, u.image,
+		       true AS favorited,
+		       EXISTS(SELECT 1 FROM follows WHERE followed_id = a.author_id AND follower_id = $2) AS following
+		FROM articles a
+		LEFT JOIN update_count uc ON a.slug = $1
+		JOIN users u ON a.author_id = u.id
+		WHERE a.slug = $1
+	`
 
-	// Lookup the article id first
-	var articleID int64
-	q1 := `SELECT id FROM articles WHERE slug = $1`
-	err = tx.QueryRow(ctx, q1, slug).Scan(&articleID)
+	var article Article
+	var author Profile
+	var following bool
+
+	err := s.db.QueryRow(ctx, query, slug, userID).Scan(
+		&article.ID, &article.Slug, &article.Title, &article.Description,
+		&article.Body, &article.TagList, &article.CreatedAt, &article.UpdatedAt,
+		&article.FavoritesCount, &article.Version, &article.AuthorID,
+		&author.Username, &author.Bio, &author.Image,
+		&article.Favorited,
+		&following,
+	)
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrRecordNotFound
@@ -227,44 +274,74 @@ func (s *ArticleStore) FavoriteBySlug(slug string, userID int64) (*Article, erro
 		return nil, err
 	}
 
-	// Insert favorite and check if a new row was inserted.
-	q2 := `INSERT INTO favorites (user_id, article_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
-	tag, err := tx.Exec(ctx, q2, userID, articleID)
-	if err != nil {
-		return nil, err
-	}
+	author.Following = following
+	article.Author = author
 
-	// Only increment the count if a new favorite was actually inserted.
-	if tag.RowsAffected() == 1 {
-		q3 := `UPDATE articles SET favorites_count = favorites_count + 1 WHERE id = $1`
-		if _, err := tx.Exec(ctx, q3, articleID); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-
-	// Return the fresh article including favorited status
-	return s.GetBySlug(slug, &User{ID: userID})
+	return &article, nil
 }
 
 // UnfavoriteBySlug unfavorites an article for the given user and returns the updated article.
+// Uses a single CTE query for optimal performance - no separate transaction needed.
 func (s *ArticleStore) UnfavoriteBySlug(slug string, userID int64) (*Article, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	// Single optimized query using CTE to:
+	// 1. Look up article ID from slug
+	// 2. Delete favorite record
+	// 3. Update favorites_count only if a favorite was actually deleted
+	// 4. Return complete article with author, favorited, and following status
+	query := `
+		WITH article_lookup AS (
+			SELECT id FROM articles WHERE slug = $1
+		),
+		favorite_delete AS (
+			DELETE FROM favorites
+			WHERE user_id = $2 
+			  AND article_id = (SELECT id FROM article_lookup)
+			RETURNING article_id
+		),
+		update_count AS (
+			UPDATE articles a
+			SET favorites_count = GREATEST(favorites_count - 1, 0)
+			FROM favorite_delete fd
+			WHERE a.id = fd.article_id
+			RETURNING a.id, a.slug, a.title, a.description, a.body, a.tag_list,
+			          a.created_at, a.updated_at, a.favorites_count, a.version, a.author_id
+		)
+		SELECT COALESCE(uc.id, a.id),
+		       COALESCE(uc.slug, a.slug),
+		       COALESCE(uc.title, a.title),
+		       COALESCE(uc.description, a.description),
+		       COALESCE(uc.body, a.body),
+		       COALESCE(uc.tag_list, a.tag_list),
+		       COALESCE(uc.created_at, a.created_at),
+		       COALESCE(uc.updated_at, a.updated_at),
+		       COALESCE(uc.favorites_count, a.favorites_count),
+		       COALESCE(uc.version, a.version),
+		       COALESCE(uc.author_id, a.author_id),
+		       u.username, u.bio, u.image,
+		       false AS favorited,
+		       EXISTS(SELECT 1 FROM follows WHERE followed_id = a.author_id AND follower_id = $2) AS following
+		FROM articles a
+		LEFT JOIN update_count uc ON a.slug = $1
+		JOIN users u ON a.author_id = u.id
+		WHERE a.slug = $1
+	`
 
-	// Lookup the article id first
-	var articleID int64
-	q1 := `SELECT id FROM articles WHERE slug = $1`
-	err = tx.QueryRow(ctx, q1, slug).Scan(&articleID)
+	var article Article
+	var author Profile
+	var following bool
+
+	err := s.db.QueryRow(ctx, query, slug, userID).Scan(
+		&article.ID, &article.Slug, &article.Title, &article.Description,
+		&article.Body, &article.TagList, &article.CreatedAt, &article.UpdatedAt,
+		&article.FavoritesCount, &article.Version, &article.AuthorID,
+		&author.Username, &author.Bio, &author.Image,
+		&article.Favorited,
+		&following,
+	)
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrRecordNotFound
@@ -272,27 +349,10 @@ func (s *ArticleStore) UnfavoriteBySlug(slug string, userID int64) (*Article, er
 		return nil, err
 	}
 
-	// Delete the favorite record.
-	q2 := `DELETE FROM favorites WHERE user_id = $1 AND article_id = $2`
-	tag, err := tx.Exec(ctx, q2, userID, articleID)
-	if err != nil {
-		return nil, err
-	}
+	author.Following = following
+	article.Author = author
 
-	// Only decrement the count if a favorite was actually deleted.
-	if tag.RowsAffected() == 1 {
-		q3 := `UPDATE articles SET favorites_count = favorites_count - 1 WHERE id = $1 AND favorites_count > 0`
-		if _, err := tx.Exec(ctx, q3, articleID); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-
-	// Return the fresh article including favorited status
-	return s.GetBySlug(slug, &User{ID: userID})
+	return &article, nil
 }
 
 func (s *ArticleStore) DeleteBySlug(slug string, authorID int64) error {
