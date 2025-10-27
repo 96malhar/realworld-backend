@@ -102,8 +102,10 @@ The API will be available at `http://localhost:4000`.
 
 ## Development
 
+### Project Structure
+
 <details>
-<summary><strong>Project Structure</strong></summary>
+<summary>Click to expand</summary>
 
 ```
 .
@@ -131,17 +133,19 @@ The API will be available at `http://localhost:4000`.
 
 </details>
 
-<details>
-<summary><strong>Running the Server</strong></summary>
+### Running the Server
 
-### Quick Start (Recommended)
+<details>
+<summary>Click to expand</summary>
+
+#### Quick Start (Recommended)
 
 ```bash
 # Starts Postgres + runs migrations + starts server
 task server:start
 ```
 
-### Manual Start
+#### Manual Start
 
 ```bash
 # Build the binary
@@ -155,7 +159,7 @@ task server:build
   -jwt-secret $JWT_SECRET
 ```
 
-### Configuration Options
+#### Configuration Options
 
 ```bash
 ./bin/api -help
@@ -179,12 +183,14 @@ Flags:
 
 </details>
 
+### Task Runner
+
 <details>
-<summary><strong>Task Runner</strong></summary>
+<summary>Click to expand</summary>
 
 This project uses [Task](https://taskfile.dev/) for managing common development workflows. All tasks are defined in `Taskfile.yml`.
 
-### Key Tasks
+#### Key Tasks
 
 **Development**
 ```bash
@@ -246,7 +252,7 @@ task install:dependencies
 task update:dependencies
 ```
 
-### Environment Variables
+#### Environment Variables
 
 All tasks automatically use environment variables defined in `Taskfile.yml`:
 
