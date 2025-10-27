@@ -7,7 +7,7 @@
 
 > A production-ready social blogging platform backend (like Medium.com) built with Go, featuring clean architecture, comprehensive testing, and optimized queries.
 
-This project adheres to the [RealWorld](https://realworld-docs.netlify.app/) API specification, demonstrating modern Go development practices including JWT authentication, proper error handling, and 77%+ test coverage.
+This project adheres to the [RealWorld](https://realworld-docs.netlify.app/) API specification, demonstrating modern Go development practices including JWT authentication, proper error handling, and 80%+ test coverage.
 
 ## Table of Contents
 
