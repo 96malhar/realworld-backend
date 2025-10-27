@@ -58,7 +58,7 @@ This project adheres to the [RealWorld](https://realworld-docs.netlify.app/) API
 
 - **Clean Architecture**: Separation of concerns with handlers, data layer, and business logic
 - **Optimized Queries**: Efficient single-query operations for common use cases
-- **Comprehensive Testing**: 148 unit tests + Newman API integration tests
+- **Comprehensive Testing**: 150 unit tests + Newman API integration tests
 - **Input Validation**: Request validation with custom validator package
 - **Error Handling**: Structured error responses with proper HTTP status codes
 - **Graceful Shutdown**: Clean server shutdown with context cancellation

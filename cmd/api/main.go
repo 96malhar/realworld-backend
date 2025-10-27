@@ -37,8 +37,9 @@ func parseConfig() appConfig {
 	flag.DurationVar(&cfg.db.maxIdleTime, "db-max-idle-time", 15*time.Minute, "PostgreSQL max connection idle time")
 	flag.DurationVar(&cfg.db.timeout, "db-timeout", 5*time.Second, "PostgreSQL operation timeout")
 
-	flag.StringVar(&cfg.jwtMaker.secretKey, "jwt-secret", os.Getenv("JWT_SECRET"), "JWT secret key")
+	flag.StringVar(&cfg.jwtMaker.secretKey, "jwt-secret", os.Getenv("JWT_SECRET"), "JWT secret key (minimum 32 characters)")
 	flag.StringVar(&cfg.jwtMaker.issuer, "jwt-issuer", os.Getenv("JWT_ISSUER"), "JWT issuer")
+	flag.DurationVar(&cfg.jwtMaker.accessDuration, "jwt-access-duration", 24*time.Hour, "JWT access token duration")
 
 	// Create a new version boolean flag with the default value of false.
 	displayVersion := flag.Bool("version", false, "Display version and exit")

@@ -80,8 +80,9 @@ func newTestServer(t *testing.T) *testServer {
 			timeout:      30 * time.Second,
 		},
 		jwtMaker: jwtMakerConfig{
-			secretKey: "test-secret-key",
-			issuer:    "conduit_tests",
+			secretKey:      "test-secret-key-must-be-32-chars-long",
+			issuer:         "conduit_tests",
+			accessDuration: 24 * time.Hour,
 		},
 	}
 

@@ -27,8 +27,9 @@ type dbConfig struct {
 }
 
 type jwtMakerConfig struct {
-	secretKey string
-	issuer    string
+	secretKey      string
+	issuer         string
+	accessDuration time.Duration
 }
 
 func (c appConfig) LogValue() slog.Value {
@@ -58,11 +59,17 @@ type jwtMaker interface {
 }
 
 func newApplication(config appConfig, logger *slog.Logger) *application {
+	jwtMaker, err := auth.NewJWTMaker(config.jwtMaker.secretKey, config.jwtMaker.issuer)
+	if err != nil {
+		slog.Error("failed to create JWT maker", "error", err)
+		os.Exit(1)
+	}
+
 	return &application{
 		config:     config,
 		logger:     logger,
 		modelStore: newModelStore(config),
-		jwtMaker:   auth.NewJWTMaker(config.jwtMaker.secretKey, config.jwtMaker.issuer),
+		jwtMaker:   jwtMaker,
 	}
 }
 

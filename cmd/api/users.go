@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/96malhar/realworld-backend/internal/data"
 	"github.com/96malhar/realworld-backend/internal/validator"
@@ -58,7 +57,7 @@ func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	token, err := app.jwtMaker.CreateToken(user.ID, 24*time.Hour)
+	token, err := app.jwtMaker.CreateToken(user.ID, app.config.jwtMaker.accessDuration)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
@@ -116,7 +115,7 @@ func (app *application) loginUserHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Generate a new JWT token for the user.
-	token, err := app.jwtMaker.CreateToken(user.ID, 24*time.Hour)
+	token, err := app.jwtMaker.CreateToken(user.ID, app.config.jwtMaker.accessDuration)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
@@ -294,7 +293,7 @@ func (app *application) updateUserHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	token, err := app.jwtMaker.CreateToken(user.ID, 24*time.Hour)
+	token, err := app.jwtMaker.CreateToken(user.ID, app.config.jwtMaker.accessDuration)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
