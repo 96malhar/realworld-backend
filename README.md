@@ -1,6 +1,7 @@
 # RealWorld Backend - Go Implementation
 
 [![CI](https://github.com/96malhar/realworld-backend/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/96malhar/realworld-backend/actions/workflows/CI.yml)
+[![Secret Scanning](https://github.com/96malhar/realworld-backend/actions/workflows/secret-scanning.yml/badge.svg?branch=main)](https://github.com/96malhar/realworld-backend/actions/workflows/secret-scanning.yml)
 [![codecov](https://codecov.io/gh/96malhar/realworld-backend/branch/main/graph/badge.svg?token=JS1YCVM98M)](https://codecov.io/gh/96malhar/realworld-backend)
 [![Go Report Card](https://goreportcard.com/badge/github.com/96malhar/realworld-backend)](https://goreportcard.com/report/github.com/96malhar/realworld-backend)
 
@@ -395,8 +396,9 @@ export JWT_ISSUER="your-app-name"
 
 ## CI/CD
 
-GitHub Actions workflow runs on every push and pull request:
+GitHub Actions workflows run on every push and pull request:
 
+### Main CI Pipeline
 1. **Linting**: `golangci-lint` with strict rules
 2. **Security**: `govulncheck` for vulnerability scanning
 3. **Unit Tests**: Full test suite with coverage reporting
@@ -404,6 +406,11 @@ GitHub Actions workflow runs on every push and pull request:
 5. **Coverage**: Automatic upload to Codecov
 
 See [.github/workflows/CI.yml](./.github/workflows/CI.yml) for details.
+
+### Secret Scanning
+Automated secret detection using [Gitleaks](https://github.com/gitleaks/gitleaks) to prevent accidental exposure of sensitive data like API keys, passwords, and tokens.
+
+See [.github/workflows/secret-scanning.yml](./.github/workflows/secret-scanning.yml) for details.
 
 ## Contributing
 
