@@ -10,6 +10,7 @@ type getTagsResponse struct {
 }
 
 func TestGetTagsHandler(t *testing.T) {
+	t.Parallel()
 	ts := newTestServer(t)
 
 	// Register Alice and Bob users
@@ -46,6 +47,7 @@ func TestGetTagsHandler(t *testing.T) {
 }
 
 func TestGetTagsHandler_NoTags(t *testing.T) {
+	t.Parallel()
 	ts := newTestServer(t)
 
 	testcases := []handlerTestcase{

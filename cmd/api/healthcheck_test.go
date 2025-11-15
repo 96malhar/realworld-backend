@@ -11,6 +11,7 @@ type healthCheckResponse struct {
 }
 
 func TestHealthcheckHandler(t *testing.T) {
+	t.Parallel()
 	want := healthCheckResponse{
 		Status: "available",
 		SystemInfo: map[string]string{

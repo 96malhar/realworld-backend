@@ -10,6 +10,7 @@ import (
 )
 
 func TestRecoverPanic(t *testing.T) {
+	t.Parallel()
 	app := newTestServer(t).app
 
 	// Create a new router and register a test handler that panics
