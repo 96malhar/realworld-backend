@@ -119,14 +119,8 @@ func (app *application) createArticleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	err = app.modelStore.Articles.Insert(article)
-	if err != nil {
-		app.serverErrorResponse(w, r, err)
-		return
-	}
-
-	// Fetch the complete article with author details
-	createdArticle, err := app.modelStore.Articles.GetBySlug(article.Slug, app.contextGetUser(r))
+	// Insert article and get complete article with author in a single query
+	createdArticle, err := app.modelStore.Articles.InsertAndReturn(article, app.contextGetUser(r))
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
@@ -134,7 +128,7 @@ func (app *application) createArticleHandler(w http.ResponseWriter, r *http.Requ
 
 	// set location header to point to the new article
 	headers := make(http.Header)
-	headers.Set("Location", "/articles/"+article.Slug)
+	headers.Set("Location", "/articles/"+createdArticle.Slug)
 	err = app.writeJSON(w, http.StatusCreated, envelope{"article": createdArticle}, headers)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)

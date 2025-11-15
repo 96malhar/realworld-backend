@@ -48,8 +48,9 @@ type UserStoreInterface interface {
 }
 
 type ArticleStoreInterface interface {
-	// Insert a new record into the articles table.
-	Insert(article *Article) error
+	// InsertAndReturn inserts an article and returns the complete article with author details in a single query.
+	// This is more efficient than Insert followed by GetBySlug as it eliminates an extra database round trip.
+	InsertAndReturn(article *Article, currentUser *User) (*Article, error)
 	// GetIDBySlug retrieves just the article ID by its slug (lightweight alternative to GetBySlug).
 	GetIDBySlug(slug string) (int64, error)
 	// GetBySlug retrieves a specific record from the articles table by slug.
