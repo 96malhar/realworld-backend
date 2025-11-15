@@ -19,9 +19,9 @@ type ModelStore struct {
 	Comments CommentStoreInterface
 }
 
-func NewModelStore(db *pgxpool.Pool, timeout time.Duration) ModelStore {
+func NewModelStore(db *pgxpool.Pool, timeout time.Duration, userCache *UserCache) ModelStore {
 	return ModelStore{
-		Users:    &UserStore{db: db, timeout: timeout},
+		Users:    &UserStore{db: db, timeout: timeout, userCache: userCache},
 		Articles: &ArticleStore{db: db, timeout: timeout},
 		Tags:     &TagStore{db: db, timeout: timeout},
 		Comments: &CommentStore{db: db, timeout: timeout},
@@ -65,6 +65,8 @@ type ArticleStoreInterface interface {
 	DeleteBySlug(slug string, userID int64) error
 	// Update an existing article record.
 	Update(article *Article) error
+	// InsertTags inserts tags into the tags table (used for async operations).
+	InsertTags(tags ...string) error
 }
 
 type TagStoreInterface interface {

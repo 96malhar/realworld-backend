@@ -104,8 +104,9 @@ func ValidateUser(v *validator.Validator, user User) {
 }
 
 type UserStore struct {
-	db      *pgxpool.Pool
-	timeout time.Duration
+	db        *pgxpool.Pool
+	timeout   time.Duration
+	userCache *UserCache
 }
 
 // Insert adds a new record in the users table.
@@ -160,7 +161,15 @@ func (s UserStore) GetByEmail(email string) (*User, error) {
 }
 
 // GetByID retrieves a user by their ID from the database.
+// Uses cache if available, otherwise queries the database and caches the result.
 func (s UserStore) GetByID(id int64) (*User, error) {
+	// Try to get from cache first if cache is available
+	if s.userCache != nil {
+		if user, found := s.userCache.Get(id); found {
+			return user, nil
+		}
+	}
+
 	query := `
 		SELECT id, username, email, password_hash, image, bio, version
 		FROM users
@@ -185,6 +194,11 @@ func (s UserStore) GetByID(id int64) (*User, error) {
 			return nil, ErrRecordNotFound
 		}
 		return nil, err
+	}
+
+	// Cache the user if cache is available
+	if s.userCache != nil {
+		s.userCache.Set(id, &user)
 	}
 
 	return &user, nil
@@ -247,6 +261,7 @@ func (s UserStore) IsFollowing(followerID, followedID int64) (bool, error) {
 }
 
 // Update updates an existing user record in the database.
+// Invalidates the cache for the updated user.
 func (s UserStore) Update(user *User) error {
 	query := `
 		UPDATE users
@@ -256,5 +271,16 @@ func (s UserStore) Update(user *User) error {
 	args := []any{user.Username, user.Email, user.Password.hash, user.Image, user.Bio, user.ID}
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
-	return s.db.QueryRow(ctx, query, args...).Scan(&user.Version)
+
+	err := s.db.QueryRow(ctx, query, args...).Scan(&user.Version)
+	if err != nil {
+		return err
+	}
+
+	// Invalidate cache after successful update
+	if s.userCache != nil {
+		s.userCache.Delete(user.ID)
+	}
+
+	return nil
 }

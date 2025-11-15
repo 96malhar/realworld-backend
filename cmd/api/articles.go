@@ -126,7 +126,17 @@ func (app *application) createArticleHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// set location header to point to the new article
+	// Insert tags asynchronously (non-critical - tags already in article.tag_list)
+	// This allows us to return the response immediately
+	if len(article.TagList) > 0 {
+		app.wg.Go(func() {
+			if err := app.modelStore.Articles.InsertTags(article.TagList...); err != nil {
+				app.logger.Error("failed to insert tags asynchronously", "error", err, "tags", article.TagList)
+			}
+		})
+	}
+
+	// Return response immediately - article is already created
 	headers := make(http.Header)
 	headers.Set("Location", "/articles/"+createdArticle.Slug)
 	err = app.writeJSON(w, http.StatusCreated, envelope{"article": createdArticle}, headers)

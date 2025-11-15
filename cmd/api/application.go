@@ -51,6 +51,7 @@ type application struct {
 	modelStore data.ModelStore
 	jwtMaker   jwtMaker
 	wg         sync.WaitGroup
+	userCache  *data.UserCache
 }
 
 type jwtMaker interface {
@@ -65,15 +66,19 @@ func newApplication(config appConfig, logger *slog.Logger) *application {
 		os.Exit(1)
 	}
 
+	// Cache users for 15 minutes, cleanup expired items every 10 minutes
+	userCache := data.NewUserCache(15*time.Minute, 10*time.Minute)
+
 	return &application{
 		config:     config,
 		logger:     logger,
-		modelStore: newModelStore(config),
+		modelStore: newModelStore(config, userCache),
 		jwtMaker:   jwtMaker,
+		userCache:  userCache,
 	}
 }
 
-func newModelStore(config appConfig) data.ModelStore {
+func newModelStore(config appConfig, userCache *data.UserCache) data.ModelStore {
 	pgxConf, err := pgxpool.ParseConfig(config.db.dsn)
 	if err != nil {
 		slog.Error(err.Error())
@@ -100,5 +105,5 @@ func newModelStore(config appConfig) data.ModelStore {
 		os.Exit(1)
 	}
 
-	return data.NewModelStore(db, config.db.timeout)
+	return data.NewModelStore(db, config.db.timeout, userCache)
 }

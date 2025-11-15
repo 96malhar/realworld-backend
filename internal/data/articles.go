@@ -150,12 +150,8 @@ func (s *ArticleStore) InsertAndReturn(article *Article, currentUser *User) (*Ar
 	// Newly created articles cannot be favorited yet
 	result.Favorited = false
 
-	// Insert tags into tags table using bulk insert
-	if len(article.TagList) > 0 {
-		if err = s.InsertTags(article.TagList...); err != nil {
-			return nil, err
-		}
-	}
+	// Note: Tag insertion into tags table is done asynchronously in the handler
+	// The article already has tags in tag_list array, so this is non-critical
 
 	return &result, nil
 }

@@ -53,7 +53,7 @@ func (app *application) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		// Retrieve the user from database
+		// GetByID now handles caching automatically
 		user, err := app.modelStore.Users.GetByID(claims.UserID)
 		if err != nil {
 			// User not found - token references non-existent user (deleted account)
@@ -66,6 +66,7 @@ func (app *application) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
+		// Set the token (not cached, as it's request-specific)
 		user.Token = tokenString
 		r = app.contextSetUser(r, user)
 		next.ServeHTTP(w, r)

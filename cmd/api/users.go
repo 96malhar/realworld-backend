@@ -293,6 +293,8 @@ func (app *application) updateUserHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Cache invalidation is now handled automatically in UserStore.Update
+
 	token, err := app.jwtMaker.CreateToken(user.ID, app.config.jwtMaker.accessDuration)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)

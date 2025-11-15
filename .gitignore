@@ -31,3 +31,4 @@ tls/
 # Newman test artifacts
 newman-results.json
 Conduit.postman_collection.json
+api
