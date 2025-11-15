@@ -99,9 +99,9 @@ tasks:
       - govulncheck ./...
 
   test:
-    desc: Run all tests
+    desc: Run all tests (accepts CLI args, e.g., task test -- -run TestCreateArticleHandler)
     cmds:
-      - gotestsum -- -coverprofile=coverage.out -coverpkg=./...  ./...
+      - gotestsum -- -coverprofile=coverage.out -coverpkg=./...  ./... {{.CLI_ARGS}}
 
   visualize:coverage:
     desc: Visualize the code coverage
