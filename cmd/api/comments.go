@@ -56,13 +56,8 @@ func (app *application) createCommentHandler(w http.ResponseWriter, r *http.Requ
 
 	currentUser := app.contextGetUser(r)
 
-	// Build the comment author profile
-	comment.Author = data.Profile{
-		Username:  currentUser.Username,
-		Bio:       currentUser.Bio,
-		Image:     currentUser.Image,
-		Following: false,
-	}
+	// Build the comment author profile (user doesn't follow themselves)
+	comment.Author = currentUser.ToProfile(false)
 
 	err = app.writeJSON(w, http.StatusCreated, envelope{"comment": comment}, nil)
 	if err != nil {

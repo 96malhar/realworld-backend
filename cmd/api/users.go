@@ -156,12 +156,7 @@ func (app *application) getProfileHandler(w http.ResponseWriter, r *http.Request
 		following, _ = app.modelStore.Users.IsFollowing(user.ID, targetUser.ID)
 	}
 
-	profile := data.Profile{
-		Username:  targetUser.Username,
-		Bio:       targetUser.Bio,
-		Image:     targetUser.Image,
-		Following: following,
-	}
+	profile := targetUser.ToProfile(following)
 	err = app.writeJSON(w, http.StatusOK, envelope{"profile": profile}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
@@ -190,12 +185,7 @@ func (app *application) followUserHandler(w http.ResponseWriter, r *http.Request
 		app.serverErrorResponse(w, r, err)
 		return
 	}
-	profile := data.Profile{
-		Username:  targetUser.Username,
-		Bio:       targetUser.Bio,
-		Image:     targetUser.Image,
-		Following: true,
-	}
+	profile := targetUser.ToProfile(true)
 	err = app.writeJSON(w, http.StatusOK, envelope{"profile": profile}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
@@ -220,12 +210,7 @@ func (app *application) unfollowUserHandler(w http.ResponseWriter, r *http.Reque
 		app.serverErrorResponse(w, r, err)
 		return
 	}
-	profile := data.Profile{
-		Username:  targetUser.Username,
-		Bio:       targetUser.Bio,
-		Image:     targetUser.Image,
-		Following: false,
-	}
+	profile := targetUser.ToProfile(false)
 	err = app.writeJSON(w, http.StatusOK, envelope{"profile": profile}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)

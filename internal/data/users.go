@@ -42,6 +42,16 @@ func (u *User) IsAnonymous() bool {
 	return u == AnonymousUser
 }
 
+// ToProfile converts a User to a Profile with the specified following status.
+func (u *User) ToProfile(following bool) Profile {
+	return Profile{
+		Username:  u.Username,
+		Bio:       u.Bio,
+		Image:     u.Image,
+		Following: following,
+	}
+}
+
 type password struct {
 	plaintext *string
 	hash      []byte
