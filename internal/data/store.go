@@ -75,8 +75,9 @@ type TagStoreInterface interface {
 }
 
 type CommentStoreInterface interface {
-	// Insert creates a new comment for an article.
-	Insert(comment *Comment) error
+	// InsertAndReturn inserts a comment and returns it with author details populated from currentUser.
+	// Uses the currentUser from context instead of querying the database for author information.
+	InsertAndReturn(comment *Comment, currentUser *User) (*Comment, error)
 	// GetByArticleID retrieves all comments with author details for an article by its article ID.
 	GetByArticleID(articleID int64) ([]Comment, error)
 	// SetFollowingStatus efficiently checks and sets the following status for all comment authors.

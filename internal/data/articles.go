@@ -87,30 +87,17 @@ type ArticleStore struct {
 	timeout time.Duration
 }
 
-// InsertAndReturn inserts an article and returns the complete article with author details in a single query.
-// This is more efficient than Insert followed by GetBySlug as it eliminates an extra database round trip.
+// InsertAndReturn inserts an article and populates it with database-generated fields and author details.
+// Modifies the input article object in place and uses currentUser from context instead of querying the database.
 func (s *ArticleStore) InsertAndReturn(article *Article, currentUser *User) (*Article, error) {
 	article.GenerateSlug()
 	article.SortTags()
 
-	// Single query that:
-	// 1. Inserts the article
-	// 2. Joins with users to get author details
-	// 3. Returns the complete article in one round trip
-	// Note: We don't check favorites since a newly created article cannot be favorited yet
+	// Insert the article - only return fields we don't already have
 	query := `
-		WITH inserted_article AS (
-			INSERT INTO articles (slug, title, description, body, tag_list, author_id)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			RETURNING id, slug, title, description, body, tag_list, created_at, updated_at, 
-			          favorites_count, version, author_id
-		)
-		SELECT 
-			ia.id, ia.slug, ia.title, ia.description, ia.body, ia.tag_list,
-			ia.created_at, ia.updated_at, ia.favorites_count, ia.version, ia.author_id,
-			u.username, u.bio, u.image
-		FROM inserted_article ia
-		JOIN users u ON ia.author_id = u.id
+		INSERT INTO articles (slug, title, description, body, tag_list, author_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, created_at, updated_at, favorites_count, version
 	`
 
 	args := []any{
@@ -121,39 +108,28 @@ func (s *ArticleStore) InsertAndReturn(article *Article, currentUser *User) (*Ar
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
-	var result Article
-	var author Profile
-
+	// Scan only the fields we don't already have into the input object
 	err := s.db.QueryRow(ctx, query, args...).Scan(
-		&result.ID,
-		&result.Slug,
-		&result.Title,
-		&result.Description,
-		&result.Body,
-		&result.TagList,
-		&result.CreatedAt,
-		&result.UpdatedAt,
-		&result.FavoritesCount,
-		&result.Version,
-		&result.AuthorID,
-		&author.Username,
-		&author.Bio,
-		&author.Image,
+		&article.ID,
+		&article.CreatedAt,
+		&article.UpdatedAt,
+		&article.FavoritesCount,
+		&article.Version,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set author (following is always false for newly created articles)
-	author.Following = false
-	result.Author = author
+	// Use author information from currentUser context instead of querying database
+	// Following is always false for newly created articles (user doesn't follow themselves)
+	article.Author = currentUser.ToProfile(false)
 	// Newly created articles cannot be favorited yet
-	result.Favorited = false
+	article.Favorited = false
 
 	// Note: Tag insertion into tags table is done asynchronously in the handler
 	// The article already has tags in tag_list array, so this is non-critical
 
-	return &result, nil
+	return article, nil
 }
 
 // GetIDBySlug retrieves just the article ID by its slug.

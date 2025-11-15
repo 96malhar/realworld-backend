@@ -28,8 +28,9 @@ type CommentStore struct {
 	timeout time.Duration
 }
 
-// Insert creates a new comment for an article.
-func (s *CommentStore) Insert(comment *Comment) error {
+// InsertAndReturn inserts a comment and populates it with database-generated fields and author details.
+// Modifies the input comment object in place and uses currentUser from context instead of querying the database.
+func (s *CommentStore) InsertAndReturn(comment *Comment, currentUser *User) (*Comment, error) {
 	query := `
 		INSERT INTO comments (body, article_id, author_id)
 		VALUES ($1, $2, $3)
@@ -41,12 +42,17 @@ func (s *CommentStore) Insert(comment *Comment) error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
+	// Scan only the fields we don't already have into the input object
 	err := s.db.QueryRow(ctx, query, args...).Scan(&comment.ID, &comment.CreatedAt, &comment.UpdatedAt)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	// Use author information from currentUser context instead of querying database
+	// Following is always false for newly created comments (user doesn't follow themselves)
+	comment.Author = currentUser.ToProfile(false)
+
+	return comment, nil
 }
 
 // GetByArticleID retrieves all comments for an article by its article ID.

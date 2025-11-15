@@ -48,18 +48,17 @@ func (app *application) createCommentHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	err = app.modelStore.Comments.Insert(comment)
+	currentUser := app.contextGetUser(r)
+
+	// Insert comment and get complete comment with author in a single operation
+	// Uses currentUser from context instead of querying database
+	createdComment, err := app.modelStore.Comments.InsertAndReturn(comment, currentUser)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
 	}
 
-	currentUser := app.contextGetUser(r)
-
-	// Build the comment author profile (user doesn't follow themselves)
-	comment.Author = currentUser.ToProfile(false)
-
-	err = app.writeJSON(w, http.StatusCreated, envelope{"comment": comment}, nil)
+	err = app.writeJSON(w, http.StatusCreated, envelope{"comment": createdComment}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
