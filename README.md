@@ -134,6 +134,89 @@ The API will be available at `http://localhost:4000`.
 
 </details>
 
+### Database Schema
+
+<details>
+<summary>Click to expand</summary>
+
+The database schema consists of 6 main tables with the following relationships:
+
+```mermaid
+erDiagram
+    users ||--o{ articles : "authors"
+    users ||--o{ comments : "writes"
+    users ||--o{ favorites : "favorites"
+    users ||--o{ follows : "follower"
+    users ||--o{ follows : "followed"
+    articles ||--o{ comments : "has"
+    articles ||--o{ favorites : "favorited_by"
+    
+    users {
+        bigserial id PK
+        citext username UK
+        citext email UK
+        bytea password_hash
+        text bio
+        text image
+        integer version
+    }
+    
+    articles {
+        serial id PK
+        varchar slug UK
+        varchar title
+        text description
+        text body
+        text_array tag_list
+        timestamp created_at
+        timestamp updated_at
+        integer favorites_count
+        integer author_id FK
+        integer version
+    }
+    
+    comments {
+        serial id PK
+        text body
+        integer article_id FK
+        bigint author_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    favorites {
+        integer user_id PK_FK
+        integer article_id PK_FK
+    }
+    
+    follows {
+        integer follower_id PK_FK
+        integer followed_id PK_FK
+    }
+    
+    tags {
+        serial id PK
+        varchar tag UK
+    }
+```
+
+**Key Relationships:**
+- **users → articles**: One-to-many (a user can create many articles)
+- **users → comments**: One-to-many (a user can write many comments)
+- **users ↔ users** (via follows): Many-to-many (users can follow each other)
+- **users ↔ articles** (via favorites): Many-to-many (users can favorite many articles)
+- **articles → comments**: One-to-many (an article can have many comments)
+- **tags**: Standalone table for tag persistence (articles store tags in `tag_list` array)
+
+**Indexes:**
+- Articles: `slug`, `author_id`, `created_at`, `tag_list` (GIN index)
+- Comments: `article_id`, `author_id`, `created_at`
+- Favorites: `user_id`, `article_id`
+- Tags: `tag`
+- Follows: Composite primary key on `(follower_id, followed_id)`
+
+</details>
+
 ### Running the Server
 
 <details>
